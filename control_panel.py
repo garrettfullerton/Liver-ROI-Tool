@@ -270,6 +270,11 @@ class ControlPanel(QWidget):
         """Handle ROI drawing toggle"""
         # Emit signal with drawing state
         self.roi_drawing_toggled.emit(enabled)
+
+        # if turning on drawing for the first time, automatically check segment 1
+        if enabled and self.roi_manager.current_segment == 0:
+            self.on_segment_selected(1)
+
     
     def on_clear_last_roi(self):
         """Handle clear last ROI button"""

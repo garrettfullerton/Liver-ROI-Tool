@@ -62,6 +62,11 @@ class ImageViewerPanel(QWidget):
         self.nav_widget_layout.addWidget(self.nav_slider_widget)
 
         self.layout.addWidget(self.nav_widget)
+
+        self.series_label = QLabel("Series: None")
+        self.series_label.setAlignment(Qt.AlignLeft)
+        self.series_label.setAlignment(Qt.AlignVCenter)
+        self.layout.addWidget(self.series_label)
         
         # Image display
         self.image_label = QLabel("No image loaded")
@@ -88,6 +93,10 @@ class ImageViewerPanel(QWidget):
 
         # blank label for spacing
         self.layout.addWidget(QLabel(""))
+
+    def update_series_label(self):
+        """Update the series label with the current series name"""
+        self.series_label.setText(f"Series: {self.dicom_model.current_series_name}")
         
     def on_slider_changed(self, value):
         """Handle slider value change"""

@@ -79,6 +79,8 @@ class DicomViewerApp(QMainWindow):
         # Connect model signals
         self.dicom_model.series_loaded.connect(self.image_viewer.update_display)
         self.dicom_model.series_loaded.connect(self.stats_panel.update_statistics)
+        self.dicom_model.series_loaded.connect(self.on_series_loaded)
+        self.dicom_model.series_loaded.connect(self.image_viewer.update_series_label)
         self.dicom_model.slice_changed.connect(self.image_viewer.update_display)
         self.dicom_model.slice_changed.connect(self.stats_panel.update_statistics)
         
@@ -98,6 +100,15 @@ class DicomViewerApp(QMainWindow):
 
         self.image_viewer.window_level_changed.connect(self.control_panel.update_window_level)
     
+    def on_series_loaded(self):
+        window = int(round(self.dicom_model.default_window))
+        level = int(round(self.dicom_model.default_level))
+
+        self.renderer.set_window_level(window, level)
+        self.control_panel.update_window_level(window, level)
+
+        self.image_viewer.update_display()
+
     @pyqtSlot()
     def show_copy_rois_dialog(self):
         """Show dialog to copy ROIs from another series"""

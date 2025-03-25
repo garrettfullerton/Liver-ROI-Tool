@@ -78,19 +78,26 @@ class DicomSeriesModel(QObject):
             try:
                 ds = pydicom.dcmread(dicom_file)
                 series_data.append(ds)
+
+                # try to get window/level from first DICOM file
+                if len(series_data) == 1:
+                    # check for window center/width tags
+                    if hasattr(ds, 'WindowCenter') and hasattr(ds, 'WindowWidth'):
+                        # handle multiple values (pick first one)
+                        if isinstance(ds.WindowCenter, list):
+                            self.default_level = float(ds.WindowCenter[0])
+                        else:
+                            self.default_level = float(ds.WindowCenter)
+                            
+                        if isinstance(ds.WindowWidth, list):
+                            self.default_window = float(ds.WindowWidth[0])
+                        else:
+                            self.default_window = float(ds.WindowWidth)
             except Exception as e:
                 print(f"Error loading {dicom_file}: {e}")
         
         # Sort by instance number if available
         series_data.sort(key=lambda x: getattr(x, 'InstanceNumber', 0))
-
-        # try to set window and level automatically
-        if hasattr(series_data[0], 'WindowCenter') and hasattr(series_data[0], 'WindowWidth'):
-            self.default_window = series_data[0].WindowWidth
-            self.default_level = series_data[0].WindowCenter
-        else:
-            self.default_window = 2000
-            self.default_level = 0
        
         if not series_data:
             return False

@@ -18,7 +18,7 @@ class ROIManager(QObject):
         super().__init__()
         self.dicom_model = dicom_model
         self.rois = []  # List of ROIs: [(slice_idx, center_x, center_y, radius, segment)]
-        self.current_segment = 1
+        self.current_segment = 0
         self.segmentation_scheme = "9-segment"  # Default to 9-segment scheme
         self.segment_labels = []
     
