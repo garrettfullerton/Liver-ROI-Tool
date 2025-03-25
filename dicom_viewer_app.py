@@ -1,4 +1,3 @@
-# dicom_viewer_app.py
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog
 from PyQt5.QtCore import Qt, pyqtSlot
 

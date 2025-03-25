@@ -1,4 +1,3 @@
-# dicom_image_renderer.py
 import numpy as np
 from PyQt5.QtCore import QObject, Qt, QRectF, QPointF
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor

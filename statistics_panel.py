@@ -1,4 +1,3 @@
-# statistics_panel.py
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                            QPushButton, QDialog, QFileDialog, QHBoxLayout)
 from PyQt5.QtCore import Qt
@@ -138,8 +137,10 @@ class StatisticsPanel(QWidget):
     
     def export_statistics(self, table):
         """Export statistics table to CSV"""
+        default_path = f"{self.dicom_model.current_study_name}/{self.dicom_model.current_series_name}_ROIs.csv"
+
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Statistics",  f"{self.dicom_model.current_series_name}_ROIs.csv", "CSV Files (*.csv);;All Files (*)"
+            self, "Save Statistics", default_path, "CSV Files (*.csv);;All Files (*)"
         )
         
         if not filename:

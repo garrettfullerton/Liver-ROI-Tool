@@ -1,4 +1,3 @@
-# series_navigator_panel.py
 import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget, 
                            QTreeWidgetItem, QFileDialog)

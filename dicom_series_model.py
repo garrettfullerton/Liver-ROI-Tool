@@ -1,4 +1,3 @@
-# dicom_series_model.py
 import os
 import pydicom
 import numpy as np
@@ -22,6 +21,7 @@ class DicomSeriesModel(QObject):
         self.default_window = 2000
         self.default_level = 0
         self.current_series_name = ""
+        self.current_study_name = ""
     
     def load_directory(self, root_dir):
         """Scan directory structure and load DICOM metadata"""
@@ -105,9 +105,11 @@ class DicomSeriesModel(QObject):
         # Store the series data
         self.series_data[series_path] = series_data
         self.current_series = series_data
+        self.current_study_name = os.path.dirname(series_path)
         self.current_series_name = os.path.basename(series_path)
         self.current_series_path = series_path
         self.current_slice_index = 0
+        print(self.current_study_name)
         
         # Update anatomical positions for this series
         self.update_anatomical_positions(series_path)

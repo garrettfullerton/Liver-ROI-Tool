@@ -1,4 +1,3 @@
-# image_viewer_panel.py
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
 from PyQt5.QtCore import Qt, QSize, QPointF
 from PyQt5.QtGui import QPainter

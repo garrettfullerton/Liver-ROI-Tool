@@ -1,4 +1,3 @@
-# control_panel.py
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                             QGroupBox, QLabel, QSlider, QSpinBox, QRadioButton,
                             QButtonGroup, QPushButton)

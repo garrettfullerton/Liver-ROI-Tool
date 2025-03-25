@@ -1,4 +1,3 @@
-# roi_manager.py
 import os
 import numpy as np
 import csv
@@ -144,8 +143,10 @@ class ROIManager(QObject):
             
         if filename is None:
             # Show file dialog
+            default_path = f"{self.dicom_model.current_study_name}/{self.dicom_model.current_series_name}_ROIs.csv"
+
             filename, _ = QFileDialog.getSaveFileName(
-                None, "Save ROIs", f"{self.dicom_model.current_series_name}_ROIs.csv", "CSV Files (*.csv);;All Files (*)"
+                None, "Save Statistics", default_path, "CSV Files (*.csv);;All Files (*)"
             )
             
         if not filename:
