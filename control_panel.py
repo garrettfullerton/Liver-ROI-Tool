@@ -7,7 +7,6 @@ from PyQt5.QtGui import QKeySequence
 
 class ControlPanel(QWidget):
     """UI panel for controls (windowing, ROI drawing, segments)"""
-    
     # Define signals
     window_level_changed = pyqtSignal(int, int)  # window, level
     segment_changed = pyqtSignal(int)  # segment number
