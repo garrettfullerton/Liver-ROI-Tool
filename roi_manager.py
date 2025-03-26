@@ -220,17 +220,17 @@ class ROIManager(QObject):
                             if orientation == 1:
                                 # sagittal
                                 pos_LR = anat_pos[0]
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - center_y)))
-                                pos_SI = anat_pos[2] + (spacing_x * (cols * center_x))
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * (center_y)))
+                                pos_SI = anat_pos[2] + (spacing_x * (cols * (center_x)))
                             elif orientation == 2:
                                 # coronal
                                 pos_LR = anat_pos[0] + (spacing_x * (cols * center_x))
                                 pos_AP = anat_pos[1]
-                                pos_SI = anat_pos[2] + (spacing_y * (rows * (1 - center_y)))
+                                pos_SI = anat_pos[2] + (spacing_y * (rows * (center_y)))
                             elif orientation == 3:
                                 # axial
                                 pos_LR = anat_pos[0] + (spacing_x * (cols * center_x))
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - center_y)))
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * (center_y)))
                                 pos_SI = anat_pos[2]
                         else:
                             orientation = "N/A"
@@ -484,7 +484,8 @@ class ROIManager(QObject):
             return False
         
         # Get ROIs from source series
-        source_rois = [roi for roi in self.rois if roi[1] in source_positions and roi[-1] == source_series_path]
+        # source_rois = [roi for roi in self.rois if roi[1] in source_positions and roi[-1] == source_series_path]
+        source_rois = [roi for roi in self.rois if roi[-1] == source_series_path]
         
         if not source_rois:
             return False
@@ -498,7 +499,7 @@ class ROIManager(QObject):
         for source_idx, source_pos in source_positions.items():
                 
             source_to_xyz[source_idx] = source_pos
-            
+                        
             # Find closest target slice 
             best_target_idx = None
             best_distance = float('inf')
@@ -546,8 +547,8 @@ class ROIManager(QObject):
                     spacing_x, spacing_y = float(pixel_spacing[1]), float(pixel_spacing[0])
                     if target_orientation == 1:
                         # sagittal
-                        center_x = (center_SI_mm - target_slice_data.ImagePositionPatient[2]) / spacing_x / cols
-                        center_y = 1 - (center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
+                        center_x = 1 - (center_SI_mm - target_slice_data.ImagePositionPatient[2]) / spacing_x / cols
+                        center_y = (center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
                     elif target_orientation == 2:
                         # coronal
                         center_x = (center_LR_mm - target_slice_data.ImagePositionPatient[0]) / spacing_x / cols
@@ -555,7 +556,7 @@ class ROIManager(QObject):
                     elif target_orientation == 3:
                         # axial
                         center_x = (center_LR_mm - target_slice_data.ImagePositionPatient[0]) / spacing_x / cols
-                        center_y = 1 - (center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
+                        center_y = (center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
 
                     # get radius from area_mm2 to pixel radius
                     radius_mm = np.sqrt(area_mm2 / np.pi)

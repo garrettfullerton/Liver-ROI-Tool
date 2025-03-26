@@ -248,8 +248,8 @@ class ImageViewerPanel(QWidget):
                             if orientation == 1:
                                 # sagittal
                                 pos_LR = anat_pos[0]
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - norm_y)))
-                                pos_SI = anat_pos[2] + (spacing_x * (cols * norm_x))
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
+                                pos_SI = anat_pos[2] + (spacing_x * (cols * (1 - norm_x)))
                             elif orientation == 2:
                                 # coronal
                                 pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
@@ -258,7 +258,7 @@ class ImageViewerPanel(QWidget):
                             elif orientation == 3:
                                 # axial
                                 pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - norm_y)))
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
                                 pos_SI = anat_pos[2]
                         else:
                             orientation = "N/A"
