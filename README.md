@@ -11,6 +11,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - [x] Copy ROIs between series (registered)
 - [x] Copy ROIs between series (unregistered)
 - [x] Load stored ROIs from a file
+- [ ] Verify ROI mean / median accuracy (with Horos, MATLAB, etc)
 - [ ] AI implementation to estimate ROIs
 
 ## Features

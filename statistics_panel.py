@@ -102,8 +102,8 @@ class StatisticsPanel(QWidget):
             
             # Add data to the row
             table.setItem(row, 0, QTableWidgetItem(segment_label))
-            table.setItem(row, 1, QTableWidgetItem(str(segment)))  # 1-based slice index for display
-            table.setItem(row, 2, QTableWidgetItem(str(slice_idx + 1)))  # 1-based slice index for display
+            table.setItem(row, 1, QTableWidgetItem(str(segment)))  
+            table.setItem(row, 2, QTableWidgetItem(str(slice_idx)))  
             table.setItem(row, 3, QTableWidgetItem(f"{center_x:.4f}"))
             table.setItem(row, 4, QTableWidgetItem(f"{center_y:.4f}"))
             table.setItem(row, 5, QTableWidgetItem(f"{radius:.4f}"))
