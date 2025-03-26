@@ -7,14 +7,18 @@ from image_viewer_panel import ImageViewerPanel
 from control_panel import ControlPanel
 from statistics_panel import StatisticsPanel
 
+# from ai_panel import AIControlPanel
+# from ai_model_manager import AIModelManager
+
 class DicomViewerApp(QMainWindow):
     """Main application class that orchestrates components"""
-    def __init__(self, dicom_model, roi_manager):
+    def __init__(self, dicom_model, roi_manager, ai_model_manager):
         super().__init__()
         
         # Store references to core components
         self.dicom_model = dicom_model
         self.roi_manager = roi_manager
+        # self.ai_model_manager = ai_model_manager()
         
         # Set window properties
         self.setWindowTitle("Liver MRI Viewer")
@@ -54,17 +58,23 @@ class DicomViewerApp(QMainWindow):
         self.stats_panel = StatisticsPanel(
             self.central_widget, self.dicom_model, self.roi_manager
         )
+
+        # self.ai_panel = AIControlPanel(
+        #     self.central_widget, self.dicom_model, self.roi_manager, self.ai_model_manager
+        # )
         
         # Set up UI for each panel
         self.navigator_panel.setup_ui()
         self.image_viewer.setup_ui()
         self.control_panel.setup_ui()
         self.stats_panel.setup_ui()
+        # self.ai_panel.setup_ui()
         
         # Add panels to main layout
         self.main_layout.addWidget(self.navigator_panel, 1)
         self.main_layout.addWidget(self.image_viewer, 3)
         self.main_layout.addWidget(self.control_panel, 1)
+        # self.main_layout.addWidget(self.ai_panel, 1)
         
         # Stats panel can be in control panel or separate
         self.control_panel.layout.addWidget(self.stats_panel)
@@ -99,6 +109,12 @@ class DicomViewerApp(QMainWindow):
         self.control_panel.import_rois_requested.connect(self.roi_manager.import_rois)
 
         self.image_viewer.window_level_changed.connect(self.control_panel.update_window_level)
+
+        # Connect AI panel signals
+        # self.ai_panel.model_loaded.connect(self.ai_model_manager.load_model)
+        # self.ai_panel.predict_rois_requested.connect(self.ai_model_manager.predict_rois)
+
+
     
     def on_series_loaded(self):
         window = int(round(self.dicom_model.default_window))
