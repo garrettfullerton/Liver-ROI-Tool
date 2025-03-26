@@ -13,6 +13,7 @@ class ControlPanel(QWidget):
     clear_last_roi_requested = pyqtSignal()
     clear_all_rois_requested = pyqtSignal()
     export_rois_requested = pyqtSignal()
+    import_rois_requested = pyqtSignal()
     show_stats_requested = pyqtSignal()
     
     def __init__(self, parent, dicom_model, roi_manager, renderer):
@@ -121,6 +122,9 @@ class ControlPanel(QWidget):
 
         # draw ROI shortcut ("e" key)
         self.draw_roi_button.setShortcut("e")
+
+        self.import_rois_buton = QPushButton("Import ROIs")
+        self.import_rois_buton.clicked.connect(self.on_import_rois)
         
         self.clear_last_roi_button = QPushButton("Clear Last ROI")
         self.clear_last_roi_button.clicked.connect(self.on_clear_last_roi)
@@ -138,6 +142,7 @@ class ControlPanel(QWidget):
 
         
         self.roi_layout.addWidget(self.draw_roi_button)
+        self.roi_layout.addWidget(self.import_rois_buton)
         self.roi_layout.addWidget(self.clear_last_roi_button)
         self.roi_layout.addWidget(self.clear_all_rois_button)
         self.roi_layout.addWidget(self.export_rois_button)
@@ -145,6 +150,10 @@ class ControlPanel(QWidget):
         
         self.roi_group.setLayout(self.roi_layout)
         self.layout.addWidget(self.roi_group)
+
+
+    def on_import_rois(self):
+        self.import_rois_requested.emit()
 
     def update_window_level(self, window, level):
         """Update window/level controls when changed from outside"""
@@ -232,13 +241,14 @@ class ControlPanel(QWidget):
             # 4-segment scheme
             self.roi_manager.set_segmentation_scheme("4-segment")
             segments = [1, 2, 3, 4]
-            segment_labels = ["1", "2", "3", "4"]
+            segment_labels = ["Left Lateral", "Left Medial", "Right Anterior", "Right Posterior"]
             self.roi_manager.segment_labels = segment_labels
         
         # Create new segment buttons
         row, col = 0, 0
         for segment in segments:
-            btn = QPushButton(f"Segment {segment_labels[segment-1]}")
+            btn_text = f"Segment {segment_labels[segment-1]}" if scheme == 9 else segment_labels[segment-1]
+            btn = QPushButton(btn_text)
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, s=segment: self.on_segment_selected(s))
             
@@ -264,6 +274,10 @@ class ControlPanel(QWidget):
         
         # Emit signal with selected segment
         self.segment_changed.emit(segment)
+
+        # if a segment is selected but ROI drawing is not enabled, enable it
+        if not self.draw_roi_button.isChecked() and segment > 0:
+            self.draw_roi_button.setChecked(True)
     
     def on_roi_drawing_toggled(self, enabled):
         """Handle ROI drawing toggle"""
@@ -273,6 +287,10 @@ class ControlPanel(QWidget):
         # if turning on drawing for the first time, automatically check segment 1
         if enabled and self.roi_manager.current_segment == 0:
             self.on_segment_selected(1)
+
+        # if turning off drawing, unselect all segments
+        if not enabled:
+            self.on_segment_selected(0)
 
     
     def on_clear_last_roi(self):

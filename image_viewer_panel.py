@@ -4,6 +4,8 @@ from PyQt5.QtGui import QPainter
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSlider
 
+import numpy as np
+
 class ImageViewerPanel(QWidget):
     """UI panel for displaying and interacting with DICOM images"""
     window_level_changed = pyqtSignal(int, int)
@@ -217,9 +219,59 @@ class ImageViewerPanel(QWidget):
                 
                 # Add ROI if it's valid
                 if normalized_radius > 0.01:  # Minimum radius check
+                    # get anatomical position and physical size
+                    anat_pos = (0, 0, 0)
+                    area_mm2 = 0
+
+                    slice_data = self.dicom_model.get_slice(self.dicom_model.current_slice_index)
+                    if slice_data:
+                        # Get pixel spacing if available
+                        pixel_spacing = getattr(slice_data, 'PixelSpacing', [1, 1])
+                        rows = getattr(slice_data, 'Rows', 1)
+                        cols = getattr(slice_data, 'Columns', 1)
+                        spacing_x, spacing_y = float(pixel_spacing[1]), float(pixel_spacing[0])
+                        
+                        # Calculate physical area
+                        pixel_radius = normalized_radius * min(slice_data.Columns, slice_data.Rows)
+                        physical_radius_mm = pixel_radius * spacing_x  # Assuming square pixels
+                        area_mm2 = np.pi * (physical_radius_mm ** 2)
+                        
+                        # Get anatomical position if available
+                        if hasattr(slice_data, 'ImagePositionPatient'):
+                            anat_pos = slice_data.ImagePositionPatient
+
+                        if hasattr(slice_data, 'ImageOrientationPatient'):
+                            orientation_vec = slice_data.ImageOrientationPatient
+                            orientation_vec_cross = np.cross(orientation_vec[:3], orientation_vec[3:])
+                            orientation_vec_cross_rounded = [round(abs(val), 0) for val in orientation_vec_cross]
+                            orientation = orientation_vec_cross_rounded.index(1.0) + 1
+                            if orientation == 1:
+                                # sagittal
+                                pos_LR = anat_pos[0]
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - norm_y)))
+                                pos_SI = anat_pos[2] + (spacing_x * (cols * norm_x))
+                            elif orientation == 2:
+                                # coronal
+                                pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
+                                pos_AP = anat_pos[1]
+                                pos_SI = anat_pos[2] + (spacing_y * (rows * (1 - norm_y)))
+                            elif orientation == 3:
+                                # axial
+                                pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
+                                pos_AP = anat_pos[1] + (spacing_y * (rows * (1 - norm_y)))
+                                pos_SI = anat_pos[2]
+                        else:
+                            orientation = "N/A"
+                            pos_LR = "N/A"
+                            pos_AP = "N/A"
+                            pos_SI = "N/A"
+
                     self.roi_manager.add_roi(
                         self.dicom_model.current_slice_index,
-                        norm_x, norm_y, normalized_radius
+                        self.roi_manager.segment_labels[self.roi_manager.current_segment - 1],
+                        self.dicom_model.current_series_path,
+                        norm_x, norm_y, normalized_radius, 
+                        pos_LR, pos_AP, pos_SI, orientation, area_mm2
                     )
             
             # Reset drawing state
@@ -262,7 +314,7 @@ class ImageViewerPanel(QWidget):
         painter = QPainter(self.image_label)
         
         # Get ROIs for current slice
-        current_rois = self.roi_manager.get_rois_for_slice(self.dicom_model.current_slice_index)
+        current_rois = self.roi_manager.get_rois_for_slice(self.dicom_model.current_slice_index, self.dicom_model.current_series_path)
         
         # Create drawing ROI data if needed
         drawing_roi = None

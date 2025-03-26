@@ -109,7 +109,6 @@ class DicomSeriesModel(QObject):
         self.current_series_name = os.path.basename(series_path)
         self.current_series_path = series_path
         self.current_slice_index = 0
-        print(self.current_study_name)
         
         # Update anatomical positions for this series
         self.update_anatomical_positions(series_path)
@@ -209,3 +208,18 @@ class DicomSeriesModel(QObject):
     def get_anatomical_positions(self):
         """Return the anatomical positions mapping"""
         return self.anatomical_positions
+    
+    def get_slice_orientations(self, series_path):
+        """Return the slice orientations for a series"""
+        orientations = {}
+        
+        if series_path in self.series_data:
+            for idx, ds in enumerate(self.series_data[series_path]):
+                if hasattr(ds, 'ImageOrientationPatient'):
+                    orientation_vec = ds.ImageOrientationPatient
+                    orientation_vec_cross = np.cross(orientation_vec[:3], orientation_vec[3:])
+                    orientation_vec_cross_rounded = [round(abs(val), 0) for val in orientation_vec_cross]
+                    orientation = orientation_vec_cross_rounded.index(1.0) + 1
+                    orientations[idx] = orientation
+        
+        return orientations

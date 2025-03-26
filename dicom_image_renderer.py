@@ -100,8 +100,19 @@ class DicomImageRenderer(QObject):
         # Draw ROIs if provided
         if rois:
             for roi in rois:
-                _, center_x, center_y, radius, segment = roi
-                segment_label = self.roi_manager.segment_labels[segment - 1]
+                segment_label, segment, slice_idx, center_x, center_y, radius, center_LR_mm, center_AP_mm, center_SI_mm, orientation, area_mm2, series_path = roi
+
+
+                # 4-segment labels are too long, so use shorter labels
+                if self.roi_manager.segmentation_scheme == "4-segment":
+                    if segment_label == 'Left Lateral':
+                        segment_label = 'LL'
+                    elif segment_label == 'Left Medial':
+                        segment_label = 'LM'
+                    elif segment_label == 'Right Anterior':
+                        segment_label = 'RA'
+                    elif segment_label == 'Right Posterior':
+                        segment_label = 'RP'
                 
                 # Scale ROI coordinates to current display
                 scaled_x = pixmap_rect.x() + (center_x * pixmap_rect.width())

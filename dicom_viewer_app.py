@@ -96,6 +96,7 @@ class DicomViewerApp(QMainWindow):
         self.control_panel.clear_all_rois_requested.connect(self.roi_manager.clear_all_rois)
         self.control_panel.export_rois_requested.connect(self.roi_manager.export_rois)
         self.control_panel.show_stats_requested.connect(self.stats_panel.show_detailed_statistics)
+        self.control_panel.import_rois_requested.connect(self.roi_manager.import_rois)
 
         self.image_viewer.window_level_changed.connect(self.control_panel.update_window_level)
     

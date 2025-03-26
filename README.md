@@ -9,8 +9,8 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - [x] Export ROI statistics to CSV
 - [x] Switch between 9-segment and 4-segment ROI scheme
 - [x] Copy ROIs between series (registered)
-- [ ] Copy ROIs between series (unregistered)
-- [ ] Load stored ROIs from a file
+- [x] Copy ROIs between series (unregistered)
+- [x] Load stored ROIs from a file
 - [ ] AI implementation to estimate ROIs
 
 ## Features
