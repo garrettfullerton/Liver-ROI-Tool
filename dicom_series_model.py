@@ -31,21 +31,21 @@ class DicomSeriesModel(QObject):
         self.directory_structure = {}
         
         # Populate tree with patient > study > series structure
-        for patient in os.listdir(root_dir):
+        for patient in sorted(os.listdir(root_dir)):
             patient_path = os.path.join(root_dir, patient)
             if not os.path.isdir(patient_path):
                 continue
                 
             self.directory_structure[patient] = {}
             
-            for study in os.listdir(patient_path):
+            for study in sorted(os.listdir(patient_path)):
                 study_path = os.path.join(patient_path, study)
                 if not os.path.isdir(study_path):
                     continue
                     
                 self.directory_structure[patient][study] = {}
                 
-                for series in os.listdir(study_path):
+                for series in sorted(os.listdir(study_path)):
                     series_path = os.path.join(study_path, series)
                     if not os.path.isdir(series_path):
                         continue
