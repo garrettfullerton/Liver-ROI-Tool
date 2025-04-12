@@ -100,27 +100,28 @@ class DicomImageRenderer(QObject):
         # Draw ROIs if provided
         if rois:
             for roi in rois:
-                segment_label, segment, slice_idx, center_x, center_y, radius, center_LR_mm, center_AP_mm, center_SI_mm, orientation, area_mm2, series_path = roi
-
-
-                # 4-segment labels are too long, so use shorter labels
                 if self.roi_manager.segmentation_scheme == "4-segment":
-                    if segment_label == 'Left Lateral':
-                        segment_label = 'LL'
-                    elif segment_label == 'Left Medial':
-                        segment_label = 'LM'
-                    elif segment_label == 'Right Anterior':
-                        segment_label = 'RA'
-                    elif segment_label == 'Right Posterior':
-                        segment_label = 'RP'
+                    if roi.segment_label == "Left Lateral":
+                        segment_label_disp = "LL"
+                    elif roi.segment_label == "Left Medial":
+                        segment_label_disp = "LM"
+                    elif roi.segment_label == "Right Anterior":
+                        segment_label_disp = "RA"
+                    elif roi.segment_label == "Right Posterior":
+                        segment_label_disp = "RP"
+                    else:
+                        segment_label_disp = roi.segment_label
+                else:
+                    segment_label_disp = roi.segment_label
+                
                 
                 # Scale ROI coordinates to current display
-                scaled_x = pixmap_rect.x() + (center_x * pixmap_rect.width())
-                scaled_y = pixmap_rect.y() + (center_y * pixmap_rect.height())
-                scaled_radius = radius * min(pixmap_rect.width(), pixmap_rect.height())
+                scaled_x = pixmap_rect.x() + (roi.center_x * pixmap_rect.width())
+                scaled_y = pixmap_rect.y() + (roi.center_y * pixmap_rect.height())
+                scaled_radius = roi.radius_px * min(pixmap_rect.width(), pixmap_rect.height())
                 
                 # Set color based on segment
-                color = self.get_segment_color(segment)
+                color = self.get_segment_color(roi.segment)
                 
                 # Draw circle
                 painter.setPen(QPen(color, 2, Qt.SolidLine))
@@ -130,7 +131,7 @@ class DicomImageRenderer(QObject):
                 # Draw segment label
                 painter.setPen(QPen(Qt.white, 1))
                 painter.drawText(QRectF(scaled_x - 10, scaled_y - 10, 20, 20), 
-                                Qt.AlignCenter, segment_label)
+                                Qt.AlignCenter, segment_label_disp)
         
         # Draw ROI being created
         if drawing_roi and 'start' in drawing_roi and 'current' in drawing_roi:
@@ -142,8 +143,8 @@ class DicomImageRenderer(QObject):
             radius = (current_pos - start_pos).manhattanLength() / 2
             
             # Draw preview circle
-            painter.setPen(QPen(Qt.green, 2, Qt.DashLine))
-            painter.setBrush(QBrush(Qt.green, Qt.NoBrush))
+            painter.setPen(QPen(Qt.yellow, 2, Qt.DashLine))
+            painter.setBrush(QBrush(Qt.yellow, Qt.NoBrush))
             painter.drawEllipse(center, radius, radius)
         
         return True

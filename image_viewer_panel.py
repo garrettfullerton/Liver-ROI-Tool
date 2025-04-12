@@ -224,6 +224,7 @@ class ImageViewerPanel(QWidget):
                     area_mm2 = 0
 
                     slice_data = self.dicom_model.get_slice(self.dicom_model.current_slice_index)
+                    pixel_array = self.dicom_model.get_slice_pixel_data(self.dicom_model.current_slice_index)
                     if slice_data:
                         # Get pixel spacing if available
                         pixel_spacing = getattr(slice_data, 'PixelSpacing', [1, 1])
@@ -232,8 +233,8 @@ class ImageViewerPanel(QWidget):
                         spacing_x, spacing_y = float(pixel_spacing[1]), float(pixel_spacing[0])
                         
                         # Calculate physical area
-                        pixel_radius = normalized_radius * min(slice_data.Columns, slice_data.Rows)
-                        physical_radius_mm = pixel_radius * spacing_x  # Assuming square pixels
+                        radius_px = normalized_radius * min(slice_data.Columns, slice_data.Rows)
+                        physical_radius_mm = radius_px * spacing_x  # Assuming square pixels
                         area_mm2 = np.pi * (physical_radius_mm ** 2)
                         
                         # Get anatomical position if available
@@ -265,13 +266,43 @@ class ImageViewerPanel(QWidget):
                             pos_LR = "N/A"
                             pos_AP = "N/A"
                             pos_SI = "N/A"
+                            
+                        
+                        # Get original dimensions
+                        height, width = pixel_array.shape
+                        
+                        # Convert normalized coordinates to pixel coordinates
+                        center_x_px = int(norm_x * width)
+                        center_y_px = int(norm_y * height)
+                        
+                        # Create a mask for the circular ROI
+                        y_indices, x_indices = np.ogrid[:height, :width]
+                        dist_from_center = np.sqrt((x_indices - center_x_px)**2 + (y_indices - center_y_px)**2)
+                        mask = dist_from_center <= radius_px
+                        
+                        # Get pixel values within the ROI
+                        roi_values = pixel_array[mask]
+                        
+                        # Calculate statistics
+                        mean_val = np.mean(roi_values)
+                        median_val = np.median(roi_values)
+                        min_val = np.min(roi_values)
+                        max_val = np.max(roi_values)
+                        size_px = len(roi_values)
+                        
 
                     self.roi_manager.add_roi(
-                        self.dicom_model.current_slice_index,
                         self.roi_manager.segment_labels[self.roi_manager.current_segment - 1],
-                        self.dicom_model.current_series_path,
+                        self.roi_manager.current_segment,
+                        self.dicom_model.current_slice_index,
                         norm_x, norm_y, normalized_radius, 
-                        pos_LR, pos_AP, pos_SI, orientation, area_mm2
+                        pos_LR, pos_AP, pos_SI, orientation, area_mm2,
+                        mean_val, median_val, min_val, max_val, size_px,
+                        self.dicom_model.current_study_name,
+                        self.dicom_model.current_exam_number,
+                        self.dicom_model.current_series_name,
+                        self.dicom_model.current_series_uid,
+                        self.dicom_model.current_series_path
                     )
             
             # Reset drawing state

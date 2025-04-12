@@ -42,23 +42,17 @@ class StatisticsPanel(QWidget):
         
         
         # Add stats for each ROI
-        for roi in current_slice_rois:
-            stats = self.roi_manager.calculate_roi_statistics(roi)
-            
-            if stats:
-                # Add a new row
-                row = self.stats_table.rowCount()
-                self.stats_table.insertRow(row)
-                
-                # Get segment from ROI
-                segment_label = roi[0]
-                
-                # Add data to the row
-                self.stats_table.setItem(row, 0, QTableWidgetItem(segment_label))
-                self.stats_table.setItem(row, 1, QTableWidgetItem(f"{stats['mean']:.2f}"))
-                self.stats_table.setItem(row, 2, QTableWidgetItem(f"{stats['median']:.2f}"))
-                self.stats_table.setItem(row, 3, QTableWidgetItem(f"{stats['min']:.2f}"))
-                self.stats_table.setItem(row, 4, QTableWidgetItem(f"{stats['max']:.2f}"))
+        for roi in current_slice_rois:            
+            # Add a new row
+            row = self.stats_table.rowCount()
+            self.stats_table.insertRow(row)
+                        
+            # Add data to the row
+            self.stats_table.setItem(row, 0, QTableWidgetItem(roi.segment_label))
+            self.stats_table.setItem(row, 1, QTableWidgetItem(f"{roi.mean_val:.2f}"))
+            self.stats_table.setItem(row, 2, QTableWidgetItem(f"{roi.median_val:.2f}"))
+            self.stats_table.setItem(row, 3, QTableWidgetItem(f"{roi.min_val:.2f}"))
+            self.stats_table.setItem(row, 4, QTableWidgetItem(f"{roi.max_val:.2f}"))
     
     def show_detailed_statistics(self):
         """Show a detailed statistics window for all ROIs"""
@@ -75,11 +69,12 @@ class StatisticsPanel(QWidget):
         
         # Create table
         table = QTableWidget()
-        table.setColumnCount(17)
+        table.setColumnCount(20)
         table.setHorizontalHeaderLabels([
-            "Segment", "Segment Index", "Slice Index", "Center X", "Center Y", "Radius", 
+            "Segment Label", "Segment Index", "Slice Index", "Center X", "Center Y", "Radius", 
             "Center LR (mm)", "Center AP (mm)", "Center SI (mm)", "Orientation", 
-            "Area (mm2)", "Mean", "Median", "Min", "Max", "Size", "Series Path"
+            "Area (mm2)", "Mean", "Median", "Min", "Max", "Size", 
+            "Study ID", "Exam Number", "Series ID", "Series Path"
             ])
 
         
@@ -90,34 +85,33 @@ class StatisticsPanel(QWidget):
         
         # Populate table with ROI data
         for roi in self.roi_manager.rois:
-            segment_label, segment, slice_idx, center_x, center_y, radius, center_LR_mm, center_AP_mm, center_SI_mm, orientation, area_mm2, series_path = roi
-            stats = self.roi_manager.calculate_roi_statistics(roi)
-            
-            if not stats:
-                continue
+
                 
             # Add a new row
             row = table.rowCount()
             table.insertRow(row)
             
             # Add data to the row
-            table.setItem(row, 0, QTableWidgetItem(segment_label))
-            table.setItem(row, 1, QTableWidgetItem(str(segment)))  
-            table.setItem(row, 2, QTableWidgetItem(str(slice_idx)))  
-            table.setItem(row, 3, QTableWidgetItem(f"{center_x:.4f}"))
-            table.setItem(row, 4, QTableWidgetItem(f"{center_y:.4f}"))
-            table.setItem(row, 5, QTableWidgetItem(f"{radius:.4f}"))
-            table.setItem(row, 6, QTableWidgetItem(f"{center_LR_mm:.4f}"))
-            table.setItem(row, 7, QTableWidgetItem(f"{center_AP_mm:.4f}"))
-            table.setItem(row, 8, QTableWidgetItem(f"{center_SI_mm:.4f}"))
-            table.setItem(row, 9, QTableWidgetItem(f"{orientation}"))
-            table.setItem(row, 10, QTableWidgetItem(f"{area_mm2:.2f}"))
-            table.setItem(row, 11, QTableWidgetItem(f"{stats['mean']:.2f}"))
-            table.setItem(row, 12, QTableWidgetItem(f"{stats['median']:.2f}"))
-            table.setItem(row, 13, QTableWidgetItem(f"{stats['min']:.2f}"))
-            table.setItem(row, 14, QTableWidgetItem(f"{stats['max']:.2f}"))
-            table.setItem(row, 15, QTableWidgetItem(str(stats['size'])))
-            table.setItem(row, 16, QTableWidgetItem(series_path))
+            table.setItem(row, 0, QTableWidgetItem(roi.segment_label))
+            table.setItem(row, 1, QTableWidgetItem(str(roi.segment)))  
+            table.setItem(row, 2, QTableWidgetItem(str(roi.slice_idx+1)))  
+            table.setItem(row, 3, QTableWidgetItem(f"{roi.center_x:.4f}"))
+            table.setItem(row, 4, QTableWidgetItem(f"{roi.center_y:.4f}"))
+            table.setItem(row, 5, QTableWidgetItem(f"{roi.radius_px:.4f}"))
+            table.setItem(row, 6, QTableWidgetItem(f"{roi.center_LR_mm:.4f}"))
+            table.setItem(row, 7, QTableWidgetItem(f"{roi.center_AP_mm:.4f}"))
+            table.setItem(row, 8, QTableWidgetItem(f"{roi.center_SI_mm:.4f}"))
+            table.setItem(row, 9, QTableWidgetItem(f"{roi.orientation}"))
+            table.setItem(row, 10, QTableWidgetItem(f"{roi.area_mm2:.2f}"))
+            table.setItem(row, 11, QTableWidgetItem(f"{roi.mean_val:.2f}"))
+            table.setItem(row, 12, QTableWidgetItem(f"{roi.median_val:.2f}"))
+            table.setItem(row, 13, QTableWidgetItem(f"{roi.min_val:.2f}"))
+            table.setItem(row, 14, QTableWidgetItem(f"{roi.max_val:.2f}"))
+            table.setItem(row, 15, QTableWidgetItem(str(roi.size_px)))
+            table.setItem(row, 16, QTableWidgetItem(roi.study_id))
+            table.setItem(row, 17, QTableWidgetItem(roi.exam_number))
+            table.setItem(row, 18, QTableWidgetItem(roi.series_id))
+            table.setItem(row, 19, QTableWidgetItem(roi.series_path))
         
         # Add table to layout
         layout.addWidget(table)
@@ -144,7 +138,7 @@ class StatisticsPanel(QWidget):
     
     def export_statistics(self, table):
         """Export statistics table to CSV"""
-        default_path = f"{self.dicom_model.current_study_name}/{self.dicom_model.current_series_name}_ROIs.csv"
+        default_path = f"{self.dicom_model.current_study_name}_{self.dicom_model.current_exam_number}_{self.roi_manager.segmentation_scheme}_ROIs.csv"
 
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save Statistics", default_path, "CSV Files (*.csv)"

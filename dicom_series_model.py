@@ -22,6 +22,8 @@ class DicomSeriesModel(QObject):
         self.default_level = 0
         self.current_series_name = ""
         self.current_study_name = ""
+        self.current_exam_number = 0
+        self.current_series_uid = ""
     
     def load_directory(self, root_dir):
         """Scan directory structure and load DICOM metadata"""
@@ -93,6 +95,28 @@ class DicomSeriesModel(QObject):
                             self.default_window = float(ds.WindowWidth[0])
                         else:
                             self.default_window = float(ds.WindowWidth)
+                            
+                    if isinstance(ds.PatientID, list):
+                        self.current_study_name = ds.PatientID[0]
+                    else:
+                        self.current_study_name = ds.PatientID
+                        
+                    if isinstance(ds.SeriesDescription, list):
+                        self.current_series_name = ds.SeriesDescription[0]
+                    else:
+                        self.current_series_name = ds.SeriesDescription
+                        
+                    if isinstance(ds.SeriesInstanceUID, list):
+                        self.current_series_uid = ds.SeriesInstanceUID[0]
+                    else:
+                        self.current_series_uid = ds.SeriesInstanceUID
+                        
+                    if isinstance(ds.StudyID, list):
+                        self.current_exam_number = ds.StudyID[0]
+                    else:
+                        self.current_exam_number = ds.StudyID
+                        
+                        
             except Exception as e:
                 print(f"Error loading {dicom_file}: {e}")
         
@@ -105,8 +129,6 @@ class DicomSeriesModel(QObject):
         # Store the series data
         self.series_data[series_path] = series_data
         self.current_series = series_data
-        self.current_study_name = os.path.dirname(series_path)
-        self.current_series_name = os.path.basename(series_path)
         self.current_series_path = series_path
         self.current_slice_index = 0
         
