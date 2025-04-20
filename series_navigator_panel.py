@@ -51,17 +51,24 @@ class SeriesNavigatorPanel(QWidget):
         # Get directory structure from model
         directory_structure = self.dicom_model.get_directory_structure()
         
+        # Get sorted top-level keys
+        sorted_top_level = sorted(directory_structure.keys())
+        
         # Populate tree with the hierarchical structure
-        for top_level, contents in directory_structure.items():
+        for top_level in sorted_top_level:
             top_item = QTreeWidgetItem(self.series_tree, [top_level])
-            self._add_tree_items(top_item, contents)
+            self._add_tree_items(top_item, directory_structure[top_level])
         
         # Expand first level
         self.series_tree.expandToDepth(0)
         
     def _add_tree_items(self, parent_item, structure):
-        """Recursively add items to the tree"""
-        for name, content in structure.items():
+        """Recursively add items to the tree in alphabetical order"""
+        # Get sorted keys
+        sorted_keys = sorted(structure.keys())
+        
+        for name in sorted_keys:
+            content = structure[name]
             if isinstance(content, dict):
                 # This is an intermediate directory
                 child_item = QTreeWidgetItem(parent_item, [name])

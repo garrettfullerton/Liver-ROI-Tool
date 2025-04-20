@@ -64,7 +64,7 @@ class DicomSeriesModel(QObject):
         # Group directories by their top-level component
         top_level_groups = {}
         
-        for dir_info in sorted(dicom_directories):
+        for dir_info in dicom_directories:
             components = dir_info['components']
             if components[0] == '.':  # Root directory
                 top_level = 'Root'
@@ -79,8 +79,12 @@ class DicomSeriesModel(QObject):
         # Build the tree structure
         self.directory_structure = {}
         
-        for top_level, dirs in top_level_groups.items():
+        # Get top-level keys in alphabetical order
+        sorted_top_level = sorted(top_level_groups.keys())
+        
+        for top_level in sorted_top_level:
             self.directory_structure[top_level] = {}
+            dirs = top_level_groups[top_level]
             
             for dir_info in dirs:
                 components = dir_info['components']
@@ -109,7 +113,7 @@ class DicomSeriesModel(QObject):
                                 current_level[component] = {}
                             
                             current_level = current_level[component]
-    
+   
     def load_series(self, series_path):
         """Load a specific series"""
         if not os.path.exists(series_path):
