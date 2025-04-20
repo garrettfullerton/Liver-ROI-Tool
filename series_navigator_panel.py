@@ -51,19 +51,25 @@ class SeriesNavigatorPanel(QWidget):
         # Get directory structure from model
         directory_structure = self.dicom_model.get_directory_structure()
         
-        # Populate tree with patient > study > series structure
-        for patient, studies in directory_structure.items():
-            patient_item = QTreeWidgetItem(self.series_tree, [patient])
-            
-            for study, series_dict in studies.items():
-                study_item = QTreeWidgetItem(patient_item, [study])
-                
-                for series, series_path in series_dict.items():
-                    series_item = QTreeWidgetItem(study_item, [series])
-                    series_item.setData(0, Qt.UserRole, series_path)
+        # Populate tree with the hierarchical structure
+        for top_level, contents in directory_structure.items():
+            top_item = QTreeWidgetItem(self.series_tree, [top_level])
+            self._add_tree_items(top_item, contents)
         
         # Expand first level
         self.series_tree.expandToDepth(0)
+        
+    def _add_tree_items(self, parent_item, structure):
+        """Recursively add items to the tree"""
+        for name, content in structure.items():
+            if isinstance(content, dict):
+                # This is an intermediate directory
+                child_item = QTreeWidgetItem(parent_item, [name])
+                self._add_tree_items(child_item, content)
+            else:
+                # This is a series directory with DICOM files
+                child_item = QTreeWidgetItem(parent_item, [name])
+                child_item.setData(0, Qt.UserRole, content)  # Store full path
     
     def on_series_selected(self, item, column):
         """Handle series selection in the tree"""
@@ -71,9 +77,14 @@ class SeriesNavigatorPanel(QWidget):
         series_path = item.data(0, Qt.UserRole)
         if not series_path:
             return
-            
-        # Emit signal with selected series path
-        self.series_selected.emit(series_path)
+        
+        # Check if this item has DICOM files directly
+        dicom_files = [f for f in os.listdir(series_path) 
+                    if f.endswith('.dcm') or f.endswith('.DCM')]
+        
+        if dicom_files:
+            # Emit signal with selected series path
+            self.series_selected.emit(series_path)
     
     def on_copy_rois_requested(self):
         """Handle request to copy ROIs from another series"""

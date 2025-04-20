@@ -26,41 +26,89 @@ class DicomSeriesModel(QObject):
         self.current_series_uid = ""
     
     def load_directory(self, root_dir):
-        """Scan directory structure and load DICOM metadata"""
+        """Scan directory structure recursively and find DICOM series at any level"""
         if not os.path.exists(root_dir):
             return False
             
         self.directory_structure = {}
         
-        # Populate tree with patient > study > series structure
-        for patient in sorted(os.listdir(root_dir)):
-            patient_path = os.path.join(root_dir, patient)
-            if not os.path.isdir(patient_path):
-                continue
-                
-            self.directory_structure[patient] = {}
-            
-            for study in sorted(os.listdir(patient_path)):
-                study_path = os.path.join(patient_path, study)
-                if not os.path.isdir(study_path):
-                    continue
-                    
-                self.directory_structure[patient][study] = {}
-                
-                for series in sorted(os.listdir(study_path)):
-                    series_path = os.path.join(study_path, series)
-                    if not os.path.isdir(series_path):
-                        continue
-                        
-                    # Check if directory contains DICOM files
-                    dicom_files = [f for f in os.listdir(series_path) 
-                                  if f.endswith('.dcm') or f.endswith('.DCM')]
-                    if not dicom_files:
-                        continue
-                        
-                    self.directory_structure[patient][study][series] = series_path
+        # Recursively scan the directory to find DICOM files
+        dicom_directories = self._find_dicom_directories(root_dir)
+        
+        # Organize found directories in a tree structure
+        self._build_directory_tree(dicom_directories)
         
         return True
+    
+    def _find_dicom_directories(self, root_dir):
+        """Find all directories containing DICOM files"""
+        dicom_dirs = []
+        
+        for root, dirs, files in os.walk(root_dir):
+            # Check if directory contains DICOM files
+            dicom_files = [f for f in files if f.endswith('.dcm') or f.endswith('.DCM') or f.endswith('.sdcopen')]
+            
+            if dicom_files:
+                # This directory contains DICOM files
+                dicom_dirs.append({
+                    'path': root,
+                    'dicom_count': len(dicom_files),
+                    # Get relative path components for tree structure
+                    'components': os.path.relpath(root, root_dir).split(os.sep)
+                })
+        
+        return dicom_dirs
+
+    def _build_directory_tree(self, dicom_directories):
+        """Build a tree structure from found DICOM directories"""
+        # Group directories by their top-level component
+        top_level_groups = {}
+        
+        for dir_info in dicom_directories:
+            components = dir_info['components']
+            if components[0] == '.':  # Root directory
+                top_level = 'Root'
+            else:
+                top_level = components[0]
+                
+            if top_level not in top_level_groups:
+                top_level_groups[top_level] = []
+                
+            top_level_groups[top_level].append(dir_info)
+        
+        # Build the tree structure
+        self.directory_structure = {}
+        
+        for top_level, dirs in top_level_groups.items():
+            self.directory_structure[top_level] = {}
+            
+            for dir_info in dirs:
+                components = dir_info['components']
+                path = dir_info['path']
+                
+                # Skip the top-level component (already used)
+                if components[0] == '.':
+                    # Handle root directory specially
+                    name = os.path.basename(path)
+                    self.directory_structure[top_level][name] = path
+                elif len(components) == 1:
+                    # Single level deep, add directly
+                    self.directory_structure[top_level][components[0]] = path
+                else:
+                    # Create intermediate levels
+                    current_level = self.directory_structure[top_level]
+                    for i in range(1, len(components)):
+                        component = components[i]
+                        
+                        if i == len(components) - 1:
+                            # Last component, store the path
+                            current_level[component] = path
+                        else:
+                            # Intermediate level, create if needed
+                            if component not in current_level:
+                                current_level[component] = {}
+                            
+                            current_level = current_level[component]
     
     def load_series(self, series_path):
         """Load a specific series"""

@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QApplication
 from dicom_viewer_app import DicomViewerApp
 from dicom_series_model import DicomSeriesModel
 from roi_manager import ROIManager
-from ai_model_manager import AIModelManager
+# from ai_model_manager import AIModelManager
 
 def main():
     app = QApplication(sys.argv)
