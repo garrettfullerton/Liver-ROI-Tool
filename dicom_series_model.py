@@ -16,7 +16,7 @@ class DicomSeriesModel(QObject):
         self.current_slice_index = 0
         self.series_data = {}  # Dictionary of loaded series
         self.anatomical_positions = {}  # Mapping of anatomical positions
-        self.directory_structure = {}  # Patient/Study/Series structure
+        self.directory_structure = {}  
         self.current_series_path = None
         self.default_window = 2000
         self.default_level = 0
@@ -64,7 +64,7 @@ class DicomSeriesModel(QObject):
         # Group directories by their top-level component
         top_level_groups = {}
         
-        for dir_info in dicom_directories:
+        for dir_info in sorted(dicom_directories):
             components = dir_info['components']
             if components[0] == '.':  # Root directory
                 top_level = 'Root'
