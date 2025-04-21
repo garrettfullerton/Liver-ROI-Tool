@@ -1,6 +1,8 @@
 # Liver ROI Tool
 A Python application for drawing and exporting ROI statistics, primarily intended for quantitative liver MRI. The application provides tools for visualizing DICOM series, drawing circular ROIs, assigning liver segments, and exporting summary statistics.
 
+![Screenshot showing the app interface.](images/screenshot.png)
+
 ## To-Do List
 - [x] Open folder, browse DICOM files
 - [x] Change window width/level
@@ -24,8 +26,6 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI
 - Export Capabilities: Export ROIs and statistics to CSV files
 - ROI Copy: Copy ROIs between series at anatomical positions
-
-![Screenshot showing the app interface.](images/screenshot.png)
 
 ## Requirements
 - Python 3.6+
