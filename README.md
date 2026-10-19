@@ -111,5 +111,9 @@ The modular architecture makes it easy to extend functionality:
 - Implement new ROI shapes by modifying the ROI manager
 - Add more analysis tools by creating new UI panels
 
+## Potential Future Developments
+- **Auto-ROI (semi-automatic):** click inside the liver and the tool places the largest circle in a homogeneous, artifact-free region that avoids large vessels (local-variance + vesselness masks, distance transform). Would add scipy/scikit-image.
+- **Auto-ROI (fully automatic):** use a liver/Couinaud segmentation model (e.g. TotalSegmentator MR tasks) to place ROIs per segment without clicking. Would add PyTorch.
+
 ## Disclaimer
 This is just a project I made for the purposes of my own research projects. I make no guarantees on the quality of this code since it's just my way of learning PyQt5.

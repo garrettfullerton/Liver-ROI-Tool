@@ -152,7 +152,7 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 
 ## Phase G — Auto-ROI (Nice)
 
-### [ ] #6 Auto-ROI placement
+### [ ] #6 Auto-ROI placement — deferred; listed under "Potential Future Developments" in README
 - **Stage 1 (semi-auto, recommended):** "Auto ROI" mode for the Whole Liver scheme (later all schemes). The user
   clicks roughly inside the liver. Then:
   1. Build a local-homogeneity mask: local std from a uniform filter, thresholded against the local median around the seed.
