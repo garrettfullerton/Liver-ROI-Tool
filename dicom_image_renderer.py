@@ -107,7 +107,7 @@ class DicomImageRenderer(QObject):
                 # Scale ROI coordinates to current display
                 scaled_x = pixmap_rect.x() + (roi.center_x * pixmap_rect.width())
                 scaled_y = pixmap_rect.y() + (roi.center_y * pixmap_rect.height())
-                scaled_radius = roi.radius_px * min(pixmap_rect.width(), pixmap_rect.height())
+                scaled_radius = roi.radius_px * pixmap_rect.width() / self.dicom_size[1]
                 
                 # Set color based on segment
                 color = self.get_segment_color(roi.segment)

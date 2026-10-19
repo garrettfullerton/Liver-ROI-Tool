@@ -97,7 +97,7 @@ class StatisticsPanel(QWidget):
             table.setItem(row, 2, QTableWidgetItem(str(roi.slice_idx+1)))  
             table.setItem(row, 3, QTableWidgetItem(f"{roi.center_x:.4f}"))
             table.setItem(row, 4, QTableWidgetItem(f"{roi.center_y:.4f}"))
-            table.setItem(row, 5, QTableWidgetItem(f"{roi.radius_px:.4f}"))
+            table.setItem(row, 5, QTableWidgetItem(f"{roi.radius_norm:.4f}"))
             table.setItem(row, 6, QTableWidgetItem(f"{roi.center_LR_mm:.4f}"))
             table.setItem(row, 7, QTableWidgetItem(f"{roi.center_AP_mm:.4f}"))
             table.setItem(row, 8, QTableWidgetItem(f"{roi.center_SI_mm:.4f}"))
@@ -108,9 +108,9 @@ class StatisticsPanel(QWidget):
             table.setItem(row, 13, QTableWidgetItem(f"{roi.min_val:.2f}"))
             table.setItem(row, 14, QTableWidgetItem(f"{roi.max_val:.2f}"))
             table.setItem(row, 15, QTableWidgetItem(str(roi.size_px)))
-            table.setItem(row, 16, QTableWidgetItem(roi.study_id))
-            table.setItem(row, 17, QTableWidgetItem(roi.exam_number))
-            table.setItem(row, 18, QTableWidgetItem(roi.series_id))
+            table.setItem(row, 16, QTableWidgetItem(roi.meta['PatientID']))
+            table.setItem(row, 17, QTableWidgetItem(roi.meta['StudyID']))
+            table.setItem(row, 18, QTableWidgetItem(roi.meta['SeriesDescription']))
             table.setItem(row, 19, QTableWidgetItem(roi.series_path))
         
         # Add table to layout

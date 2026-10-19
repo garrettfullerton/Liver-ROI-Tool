@@ -1,7 +1,9 @@
 import os
 import pydicom
-import numpy as np
+from pydicom.multival import MultiValue
 from PyQt5.QtCore import QObject, pyqtSignal
+
+from roi_geometry import get_orientation, get_pixel_values
 
 class DicomSeriesModel(QObject):
     """Model class for loading and managing DICOM data"""
@@ -15,6 +17,7 @@ class DicomSeriesModel(QObject):
         self.current_series = None
         self.current_slice_index = 0
         self.series_data = {}  # Dictionary of loaded series
+        self.series_meta = {}  # Series-level info keyed by path (filled by header scan, then on load)
         self.anatomical_positions = {}  # Mapping of anatomical positions
         self.directory_structure = {}  
         self.current_series_path = None
@@ -37,6 +40,9 @@ class DicomSeriesModel(QObject):
         
         # Organize found directories in a tree structure
         self._build_directory_tree(dicom_directories)
+
+        # Read series headers (series number, exam, etc.)
+        self._scan_series_headers(dicom_directories)
         
         return True
     
@@ -114,105 +120,139 @@ class DicomSeriesModel(QObject):
                             
                             current_level = current_level[component]
    
-    def load_series(self, series_path):
-        """Load a specific series"""
+    def _scan_series_headers(self, dicom_directories):
+        """Read one header per series folder (no pixel data) so series can be labeled and grouped by exam"""
+        for dir_info in dicom_directories:
+            path = dir_info['path']
+            if path in self.series_meta:
+                continue
+            for f in sorted(os.listdir(path)):
+                if self._is_dicom_filename(f):
+                    try:
+                        ds = pydicom.dcmread(os.path.join(path, f), stop_before_pixels=True)
+                        self.series_meta[path] = self._extract_meta(ds)
+                        break
+                    except Exception as e:
+                        print(f"Error reading header {f}: {e}")
+
+    @staticmethod
+    def _is_dicom_filename(filename):
+        return filename.endswith('.dcm') or filename.endswith('.DCM')
+
+    @staticmethod
+    def _tag(ds, name, default=""):
+        """Return a DICOM attribute value, taking the first item of multi-valued attributes"""
+        value = getattr(ds, name, default)
+        if isinstance(value, MultiValue):
+            value = value[0] if len(value) else default
+        return value
+
+    def _extract_meta(self, ds):
+        """Series-level information stored with each ROI"""
+        meta = {
+            'PatientID': str(self._tag(ds, 'PatientID')),
+            'StudyID': str(self._tag(ds, 'StudyID')),
+            'StudyInstanceUID': str(self._tag(ds, 'StudyInstanceUID')),
+            'SeriesInstanceUID': str(self._tag(ds, 'SeriesInstanceUID')),
+            'SeriesDescription': str(self._tag(ds, 'SeriesDescription')),
+            'SeriesNumber': self._tag(ds, 'SeriesNumber', None),
+            'Rows': int(self._tag(ds, 'Rows', 0)),
+            'Columns': int(self._tag(ds, 'Columns', 0)),
+            'WindowCenter': None,
+            'WindowWidth': None,
+            'Orientation': get_orientation(ds),
+        }
+        if hasattr(ds, 'WindowCenter') and hasattr(ds, 'WindowWidth'):
+            meta['WindowCenter'] = float(self._tag(ds, 'WindowCenter'))
+            meta['WindowWidth'] = float(self._tag(ds, 'WindowWidth'))
+        return meta
+
+    def read_series(self, series_path):
+        """Read (or return cached) slices of a series without making it the current series"""
+        if series_path in self.series_data:
+            return self.series_data[series_path]
+
         if not os.path.exists(series_path):
-            return False
+            return None
             
         # Load all DICOM files in the series
         dicom_files = [os.path.join(series_path, f) for f in os.listdir(series_path) 
-                      if f.endswith('.dcm') or f.endswith('.DCM')]
+                      if self._is_dicom_filename(f)]
         
-        if not dicom_files:
-            return False
-            
-        # Load the series data
         series_data = []
         for dicom_file in dicom_files:
             try:
-                ds = pydicom.dcmread(dicom_file)
-                series_data.append(ds)
-
-                # try to get window/level from first DICOM file
-                if len(series_data) == 1:
-                    # check for window center/width tags
-                    if hasattr(ds, 'WindowCenter') and hasattr(ds, 'WindowWidth'):
-                        # handle multiple values (pick first one)
-                        if isinstance(ds.WindowCenter, list):
-                            self.default_level = float(ds.WindowCenter[0])
-                        else:
-                            self.default_level = float(ds.WindowCenter)
-                            
-                        if isinstance(ds.WindowWidth, list):
-                            self.default_window = float(ds.WindowWidth[0])
-                        else:
-                            self.default_window = float(ds.WindowWidth)
-                            
-                    if isinstance(ds.PatientID, list):
-                        self.current_study_name = ds.PatientID[0]
-                    else:
-                        self.current_study_name = ds.PatientID
-                        
-                    if isinstance(ds.SeriesDescription, list):
-                        self.current_series_name = ds.SeriesDescription[0]
-                    else:
-                        self.current_series_name = ds.SeriesDescription
-                        
-                    if isinstance(ds.SeriesInstanceUID, list):
-                        self.current_series_uid = ds.SeriesInstanceUID[0]
-                    else:
-                        self.current_series_uid = ds.SeriesInstanceUID
-                        
-                    if isinstance(ds.StudyID, list):
-                        self.current_exam_number = ds.StudyID[0]
-                    else:
-                        self.current_exam_number = ds.StudyID
-                        
-                        
+                series_data.append(pydicom.dcmread(dicom_file))
             except Exception as e:
                 print(f"Error loading {dicom_file}: {e}")
         
+        if not series_data:
+            return None
+
         # Sort by instance number if available
         series_data.sort(key=lambda x: getattr(x, 'InstanceNumber', 0))
-       
-        if not series_data:
-            return False
             
         # Store the series data
         self.series_data[series_path] = series_data
-        self.current_series = series_data
-        self.current_series_path = series_path
-        self.current_slice_index = 0
+        self.series_meta[series_path] = self._extract_meta(series_data[0])
         
         # Update anatomical positions for this series
         self.update_anatomical_positions(series_path)
+        
+        return series_data
+
+    def load_series(self, series_path):
+        """Load a specific series and make it the current series"""
+        series_data = self.read_series(series_path)
+        if not series_data:
+            return False
+
+        meta = self.series_meta[series_path]
+        self.current_series = series_data
+        self.current_series_path = series_path
+        self.current_slice_index = 0
+        self.current_study_name = meta['PatientID']
+        self.current_exam_number = meta['StudyID']
+        self.current_series_name = meta['SeriesDescription']
+        self.current_series_uid = meta['SeriesInstanceUID']
+
+        if meta['WindowCenter'] is not None:
+            self.default_level = meta['WindowCenter']
+            self.default_window = meta['WindowWidth']
+        else:
+            self.default_level = 0
+            self.default_window = 2000
         
         # Emit signal that series has been loaded
         self.series_loaded.emit()
         
         return True
+
+    def get_series_meta(self, series_path=None):
+        """Return series-level information (defaults to current series)"""
+        if series_path is None:
+            series_path = self.current_series_path
+        return self.series_meta.get(series_path, {})
     
     def get_current_slice(self):
         """Return current slice data"""
-        if not self.current_series or self.current_slice_index >= len(self.current_series):
+        return self.get_slice(self.current_slice_index)
+    
+    def get_slice(self, index, series_path=None):
+        """Return slice at specified index (defaults to current series)"""
+        series = self.current_series if series_path is None else self.series_data.get(series_path)
+        if not series or not 0 <= index < len(series):
             return None
             
-        return self.current_series[self.current_slice_index]
+        return series[index]
     
-    def get_slice(self, index):
-        """Return slice at specified index"""
-        if not self.current_series or index >= len(self.current_series):
-            return None
-            
-        return self.current_series[index]
-    
-    def get_slice_pixel_data(self, index):
-        """Return pixel data for slice at specified index"""
-        slice_data = self.get_slice(index)
+    def get_slice_pixel_data(self, index, series_path=None):
+        """Return rescaled pixel data for slice at specified index (defaults to current series)"""
+        slice_data = self.get_slice(index, series_path)
         if slice_data is None:
             return None
             
-        return slice_data.pixel_array
+        return get_pixel_values(slice_data)
     
     def next_slice(self):
         """Move to next slice"""
@@ -287,13 +327,9 @@ class DicomSeriesModel(QObject):
         """Return the slice orientations for a series"""
         orientations = {}
         
-        if series_path in self.series_data:
-            for idx, ds in enumerate(self.series_data[series_path]):
-                if hasattr(ds, 'ImageOrientationPatient'):
-                    orientation_vec = ds.ImageOrientationPatient
-                    orientation_vec_cross = np.cross(orientation_vec[:3], orientation_vec[3:])
-                    orientation_vec_cross_rounded = [round(abs(val), 0) for val in orientation_vec_cross]
-                    orientation = orientation_vec_cross_rounded.index(1.0) + 1
-                    orientations[idx] = orientation
+        for idx, ds in enumerate(self.series_data.get(series_path, [])):
+            orientation = get_orientation(ds)
+            if orientation is not None:
+                orientations[idx] = orientation
         
         return orientations

@@ -3,9 +3,10 @@
 Status key: `[ ]` todo · `[~]` in progress · `[x]` done
 Priority: **Need** = need-to-have · **Nice** = nice-to-have
 
-Open questions to confirm before implementing:
-- L/R scheme = one Left-lobe ROI + one Right-lobe ROI? (assumed yes)
-- Do any series contain multiple echoes/phases in a single folder? (affects Q6)
+Confirmed: L/R scheme = Left lobe + Right lobe ROIs. No series contain multiple echoes/phases per folder.
+
+Open question:
+- B9 (coronal/sagittal mm coordinates): OK to fix before Phase D? Changes exported mm for non-axial series.
 
 ---
 
@@ -45,19 +46,19 @@ Open questions to confirm before implementing:
 
 ## Phase B — Foundation refactor (supports #1, #4, Q3, B6)
 
-### [ ] F1 Header scan when a folder is opened
+### [x] F1 Header scan when a folder is opened
 - `dicom_series_model.load_directory`: for each DICOM folder, read one file with
   `pydicom.dcmread(stop_before_pixels=True)` and store a `series_info` dict
   (SeriesNumber, SeriesDescription, SeriesInstanceUID, StudyInstanceUID, SeriesDate/Time, orientation, n_files).
 - Lets the app group series by exam (StudyInstanceUID) and label the tree properly.
 
-### [ ] F2 Load series without making it current
+### [x] F2 Load series without making it current
 - Split `load_series` into `read_series(path)` (reads, sorts, caches in `series_data` and returns it) and
   `load_series(path)` (calls `read_series`, then sets the current series and emits the signal). Reuse the cache if already loaded.
 - Store per-series metadata (name, UID, exam number, etc.) in a dict keyed by path, instead of only the
   `current_*` attributes.
 
-### [ ] F3 Single ROI-stats function
+### [x] F3 Single ROI-stats function
 - New `roi_geometry.py` with `compute_roi(ds, pixel_array, norm_x, norm_y, radius_px)` that returns center in mm,
   area, mean/median/min/max/**std**, and n_px. Apply RescaleSlope/Intercept here (B4).
 - Used by drawing (`image_viewer_panel.on_mouse_release`), copy/propagate, and auto-ROI. Removes the
@@ -65,7 +66,7 @@ Open questions to confirm before implementing:
 - Define the ROI radius in **image pixels** (not normalized by the label/pixmap min dimension) to remove
   the drawn vs. measured mismatch on non-square matrices.
 
-### [ ] F4 ROI data model
+### [x] F4 ROI data model
 - `ROI` gets core fields (scheme, segment, label, slice_idx, center, radius, stats) plus a `meta` dict for
   series/acquisition info. Replace the 21 positional args with keyword args or a dataclass.
 
@@ -113,12 +114,17 @@ Open questions to confirm before implementing:
   Track insertion order so that "last" means the last ROI drawn. Add Ctrl+Z.
 - [ ] **B3** Import keeps all rows (matched to series by UID, using the F1 scan), not just the current series,
   and asks "Replace or merge?" instead of always clearing.
-- [ ] **B4** Apply RescaleSlope/Intercept (and Philips private scale if needed) in `compute_roi`.
+- [x] **B4** Apply RescaleSlope/Intercept in `compute_roi_stats` (done in Phase B). Philips private scale not handled.
 - [ ] **B5** Confirmation dialogs for Clear All and for scheme changes when ROIs exist.
-- [ ] **B6** Sort slices by position along the slice normal (from ImagePositionPatient), then by echo/temporal
-  index. Split multi-echo/multi-phase folders into sub-series (pending answer to the open question).
+- [ ] **B6** Sort slices by position along the slice normal (from ImagePositionPatient), with InstanceNumber as the fallback.
+  (No multi-echo/multi-phase splitting needed.)
 - [ ] **B7** DICOM detection: accept files without an extension (check the `DICM` preamble). Use the same file
   filter in the folder scan, `load_series`, and the navigator (`.sdcopen` is currently inconsistent).
+- [ ] **B9** Patient-coordinate (mm) math in `roi_geometry.normalized_to_patient` assumes a fixed convention that
+  is only correct for standard axial slices. Coronal SI is offset by the FOV height. Sagittal swaps the AP/SI axes.
+  Copying stays self-consistent within one series geometry, but copying between coronal/sagittal series with
+  different FOV/position will misplace ROIs. Fix: compute positions from the ImageOrientationPatient direction cosines
+  (P = IPP + col·Δc·row_cos + row·Δr·col_cos), and use the inverse for copying. Do this before Phase D.
 - [ ] **B8** Window/level ranges: set the slider/spinbox ranges from the series' min/max instead of 4000/±2000.
 
 ---

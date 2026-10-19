@@ -23,7 +23,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - Image Navigation: Scroll through slices using buttons, keyboard, mouse wheel, or slice slider
 - ROI Tools: Draw circular ROIs and associate them with liver segments
 - Segmentation Schemes: 9-segment (Couinaud), 4-segment, left/right lobe, or a single whole-liver ROI
-- ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI
+- ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI, using rescaled pixel values (RescaleSlope/Intercept)
 - Export Capabilities: Export ROIs and statistics to CSV files
 - ROI Copy: Copy ROIs between series at anatomical positions
 
@@ -69,6 +69,7 @@ python liver-app.py
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
 - schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
+- roi_geometry.py: Shared ROI geometry and statistics (pixel/mm conversion, circular ROI stats)
 - series_navigator_panel.py: Series browser UI panel
 - image_viewer_panel.py: Image display UI panel
 - control_panel.py: Controls for window/level, segments, and ROIs

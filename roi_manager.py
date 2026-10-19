@@ -1,42 +1,44 @@
 import os
 import numpy as np
 import csv
+from dataclasses import dataclass, field
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QListWidget, QListWidgetItem, QPushButton, 
                             QFileDialog, QAbstractItemView)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
 
 from schemes import SCHEMES, DEFAULT_SCHEME
+from roi_geometry import compute_roi_stats, patient_to_normalized, get_pixel_spacing
 
 
-class ROI():
-    def __init__(self, segment_label, segment, slice_idx, center_x, center_y, radius, 
-                center_LR_mm, center_AP_mm, center_SI_mm, orientation, 
-                area_mm2, mean_val, median_val, min_val, max_val, size_px, 
-                study_id, exam_number, series_id, series_uid, series_path):
-        self.segment_label = segment_label
-        self.segment = segment
-        self.slice_idx = slice_idx
-        self.center_x = center_x
-        self.center_y = center_y
-        self.radius_px = radius
-        self.center_LR_mm = center_LR_mm
-        self.center_AP_mm = center_AP_mm
-        self.center_SI_mm = center_SI_mm
-        self.orientation = orientation
-        self.area_mm2 = area_mm2
-        self.mean_val = mean_val
-        self.median_val = median_val
-        self.min_val = min_val
-        self.max_val = max_val
-        self.size_px = size_px
-        self.study_id = study_id
-        self.exam_number = exam_number
-        self.series_id = series_id
-        self.series_uid = series_uid
-        self.series_path = series_path
+@dataclass(eq=False)
+class ROI:
+    scheme: str
+    segment_label: str
+    segment: int
+    slice_idx: int
+    center_x: float  # normalized (0-1) column position
+    center_y: float  # normalized (0-1) row position
+    radius_px: float  # radius in image pixels
+    center_LR_mm: float
+    center_AP_mm: float
+    center_SI_mm: float
+    orientation: int
+    area_mm2: float
+    mean_val: float
+    median_val: float
+    min_val: float
+    max_val: float
+    std_val: float
+    size_px: int
+    series_path: str
+    meta: dict = field(default_factory=dict)  # series-level DICOM info (DicomSeriesModel.series_meta)
+
+    @property
+    def radius_norm(self):
+        """Radius as a fraction of the smaller image dimension (format used in exported CSVs)"""
+        return self.radius_px / min(self.meta['Rows'], self.meta['Columns'])
         
 
 class ROIManager(QObject):
@@ -48,32 +50,38 @@ class ROIManager(QObject):
     def __init__(self, dicom_model):
         super().__init__()
         self.dicom_model = dicom_model
-        self.rois = []  # List of ROIs: [(segment, slice_index, center_x_px, center_y_px, radius_px, 
-                        #                   center_LR_mm, center_AP_mm, center_SI_mm, orientation, 
-                        #                   area_mm2, mean_val, median_val, min_val, max_val, size_px, 
-                        #                   study_id, exam_number, series_id, series_path)]
+        self.rois = []  # List of ROI objects
         self.current_segment = 0
         self.segmentation_scheme = DEFAULT_SCHEME
         self.segment_labels = SCHEMES[DEFAULT_SCHEME]["labels"]
     
-    def add_roi(self, segment_label, segment, slice_idx, center_x, center_y, radius, 
-                center_LR_mm, center_AP_mm, center_SI_mm, orientation, 
-                area_mm2, mean_val, median_val, min_val, max_val, size_px, 
-                study_id, exam_number, series_id, series_uid, series_path):
-        
-        """Add a new ROI"""
-        # check segments already in rois
-        # delete if already in rois
-        for i, roi in enumerate(self.rois):
-            if roi.segment == segment and roi.series_path == series_path:
-                self.delete_roi(i)
-                
-        new_roi = ROI(segment_label, segment, slice_idx, center_x, center_y, radius, 
-                        center_LR_mm, center_AP_mm, center_SI_mm, orientation, 
-                        area_mm2, mean_val, median_val, min_val, max_val, size_px, 
-                        study_id, exam_number, series_id, series_uid, series_path)
-            
-        self.rois.append(new_roi)
+    def create_roi(self, series_path, slice_idx, segment, norm_x, norm_y, radius_px):
+        """Build an ROI (with statistics) on a slice of any loaded series; returns None if invalid"""
+        slice_data = self.dicom_model.get_slice(slice_idx, series_path)
+        if slice_data is None or not 1 <= segment <= len(self.segment_labels):
+            return None
+
+        pixel_values = self.dicom_model.get_slice_pixel_data(slice_idx, series_path)
+        stats = compute_roi_stats(slice_data, pixel_values, norm_x, norm_y, radius_px)
+        if stats is None:
+            return None
+
+        return ROI(scheme=self.segmentation_scheme,
+                   segment_label=self.segment_labels[segment - 1],
+                   segment=segment,
+                   slice_idx=slice_idx,
+                   center_x=norm_x,
+                   center_y=norm_y,
+                   radius_px=radius_px,
+                   series_path=series_path,
+                   meta=self.dicom_model.get_series_meta(series_path),
+                   **stats)
+
+    def add_roi(self, roi):
+        """Add a new ROI, replacing any ROI of the same segment in the same series"""
+        self.rois = [r for r in self.rois
+                     if not (r.segment == roi.segment and r.series_path == roi.series_path)]
+        self.rois.append(roi)
         self.rois_changed.emit()
         return True
     
@@ -187,7 +195,7 @@ class ROIManager(QObject):
                         str(roi.slice_idx+1), 
                         f"{roi.center_x:.4f}", 
                         f"{roi.center_y:.4f}", 
-                        f"{roi.radius_px:.4f}",
+                        f"{roi.radius_norm:.4f}",
                         f"{roi.center_LR_mm:.4f}",
                         f"{roi.center_AP_mm:.4f}",
                         f"{roi.center_SI_mm:.4f}",
@@ -198,10 +206,10 @@ class ROIManager(QObject):
                         f"{roi.min_val:.4f}",
                         f"{roi.max_val:.4f}",
                         str(roi.size_px),
-                        roi.study_id,
-                        roi.exam_number,
-                        roi.series_id,
-                        roi.series_uid,
+                        roi.meta['PatientID'],
+                        roi.meta['StudyID'],
+                        roi.meta['SeriesDescription'],
+                        roi.meta['SeriesInstanceUID'],
                         roi.series_path
                     ])
                         
@@ -243,33 +251,20 @@ class ROIManager(QObject):
                         print(f"Error: Required field '{field}' missing in CSV header")
                         return False
                 
-                # Get indices of required fields
+                # Get indices of the fields needed to rebuild ROIs
                 segment_label_col = header_lower.index("segment label")
-                segment_col = header_lower.index("segment index")
                 slice_idx_col = header_lower.index("slice index")
                 center_x_col = header_lower.index("center x")
                 center_y_col = header_lower.index("center y")
                 radius_col = header_lower.index("radius")
-                anat_x_col = header_lower.index("center lr (mm)")
-                anat_y_col = header_lower.index("center ap (mm)")
-                anat_z_col = header_lower.index("center si (mm)")
-                orientation_col = header_lower.index("orientation")
-                area_col = header_lower.index("area (mm2)")
-                mean_col = header_lower.index("mean")
-                median_col = header_lower.index("median")
-                min_col = header_lower.index("min")
-                max_col = header_lower.index("max")
-                size_col = header_lower.index("size")
-                study_id_col = header_lower.index("study id")
-                exam_number_col = header_lower.index("exam number")
-                series_id_col = header_lower.index("series id")
                 series_uid_col = header_lower.index("series uid")
-                series_col = header_lower.index("series path")
                 
                 # Clear existing ROIs if any
                 self.clear_all_rois()
                 
-                # Read ROI data
+                series_path = self.dicom_model.current_series_path
+                
+                # Read ROI data; statistics are recomputed from the image
                 for i, row in enumerate(reader):
                     try:
                         if row[series_uid_col] != self.dicom_model.current_series_uid:
@@ -280,34 +275,20 @@ class ROIManager(QObject):
                             print(f"can't find correct segment labels for row {i+1}. maybe change segmentation scheme?")
                             continue
 
-                        # Extract required fields
                         slice_idx = int(row[slice_idx_col])-1
-                        center_x = float(row[center_x_col])
-                        center_y = float(row[center_y_col])
-                        radius = float(row[radius_col])
-                        segment = int(row[segment_col])
-                        segment_label = row[segment_label_col]
-                        center_LR_mm = float(row[anat_x_col])
-                        center_AP_mm = float(row[anat_y_col])
-                        center_SI_mm = float(row[anat_z_col])
-                        orientation = int(row[orientation_col])
-                        area_mm2 = float(row[area_col])
-                        mean_val = float(row[mean_col])
-                        median_val = float(row[median_col])
-                        min_val = float(row[min_col])
-                        max_val = float(row[max_col])
-                        size_px = int(row[size_col])
-                        study_id = row[study_id_col]
-                        exam_number = row[exam_number_col]
-                        series_id = row[series_id_col]
-                        series_uid = row[series_uid_col]
-                        series_path = row[series_col]
+                        slice_data = self.dicom_model.get_slice(slice_idx, series_path)
+                        if slice_data is None:
+                            print(f"skipping row {i+1}: slice {slice_idx+1} not in current series")
+                            continue
 
-                        # Add the ROI
-                        self.add_roi(segment_label, segment, slice_idx, center_x, center_y, radius, 
-                                     center_LR_mm, center_AP_mm, center_SI_mm, orientation, area_mm2, 
-                                     mean_val, median_val, min_val, max_val, size_px, 
-                                     study_id, exam_number, series_id, series_uid, series_path)
+                        # Radius is stored as a fraction of the smaller image dimension
+                        radius_px = float(row[radius_col]) * min(slice_data.Rows, slice_data.Columns)
+                        segment = self.segment_labels.index(row[segment_label_col]) + 1
+
+                        roi = self.create_roi(series_path, slice_idx, segment,
+                                              float(row[center_x_col]), float(row[center_y_col]), radius_px)
+                        if roi is not None:
+                            self.add_roi(roi)
                                                
                     except (ValueError, IndexError) as e:
                         print(f"Error parsing ROI row {i+1}: {e}")
@@ -421,15 +402,18 @@ class ROIManager(QObject):
         Returns:
             bool: True if any ROIs were copied, False otherwise
         """
-        anatomical_positions = self.dicom_model.get_anatomical_positions()
-        
         if target_series_path is None:
             target_series_path = self.dicom_model.get_current_series_path()
         
         if not source_series_path or not target_series_path:
             return False
+
+        # Make sure both series are read (target need not be the displayed series)
+        if not self.dicom_model.read_series(source_series_path) or not self.dicom_model.read_series(target_series_path):
+            return False
         
         # Get source and target positions
+        anatomical_positions = self.dicom_model.get_anatomical_positions()
         source_positions = anatomical_positions.get(source_series_path, {})
         target_positions = anatomical_positions.get(target_series_path, {})
 
@@ -439,37 +423,26 @@ class ROIManager(QObject):
             return False
         
         # Get ROIs from source series
-        # source_rois = [roi for roi in self.rois if roi[1] in source_positions and roi[-1] == source_series_path]
         source_rois = [roi for roi in self.rois if roi.series_path == source_series_path]
         
         if not source_rois:
             return False
-                
-
         
         # Create a mapping from source to target slices based on closest anatomical positions
         slice_mapping = {}
-        source_to_xyz = {}  # Store anatomical coordinates for each source slice
         
         for source_idx, source_pos in source_positions.items():
-                
-            source_to_xyz[source_idx] = source_pos
-                        
-            # Find closest target slice 
+            # Find closest target slice along the target's through-plane axis
             best_target_idx = None
             best_distance = float('inf')
             
             for target_idx, target_pos in target_positions.items():
-                orientation = target_orientations[target_idx]
+                orientation = target_orientations.get(target_idx)
+                if orientation is None:
+                    continue
 
-                if orientation == 1:
-                    distance = abs(source_pos[0] - target_pos[0])
-                elif orientation == 2:
-                    distance = abs(source_pos[1] - target_pos[1])
-                elif orientation == 3:
-                    distance = abs(source_pos[2] - target_pos[2])
-                    
-               
+                axis = orientation - 1  # 0=LR (sagittal), 1=AP (coronal), 2=SI (axial)
+                distance = abs(float(source_pos[axis]) - float(target_pos[axis]))
                 
                 # Only consider if within maximum distance threshold
                 if distance <= max_distance_mm and distance < best_distance:
@@ -483,104 +456,37 @@ class ROIManager(QObject):
         new_rois = []
 
         for roi in source_rois:
-            
-            if roi.slice_idx in slice_mapping:
-                target_slice_idx, distance, target_orientation = slice_mapping[roi.slice_idx]
+            if roi.slice_idx not in slice_mapping:
+                continue
 
-                if target_orientation != roi.orientation:
-                    continue
+            target_slice_idx, distance, target_orientation = slice_mapping[roi.slice_idx]
 
-                if roi.segment_label not in self.segment_labels:
-                    continue
+            if target_orientation != roi.orientation:
+                continue
 
-                # convert center_LR_mm, center_AP_mm, center_SI_mm to pixel coordinates
-                target_slice_data = self.dicom_model.get_slice(target_slice_idx)
-                target_pixel_array = self.dicom_model.get_slice_pixel_data(target_slice_idx)
+            if roi.segment_label not in self.segment_labels:
+                continue
 
-                pixel_spacing = getattr(target_slice_data, 'PixelSpacing', [1, 1])
-                rows = getattr(target_slice_data, 'Rows', 1)
-                cols = getattr(target_slice_data, 'Columns', 1)
-                spacing_x, spacing_y = float(pixel_spacing[1]), float(pixel_spacing[0])
-                if target_orientation == 1:
-                    # sagittal
-                    target_center_x = 1 - (roi.center_SI_mm - target_slice_data.ImagePositionPatient[2]) / spacing_x / cols
-                    target_center_y = (roi.center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
-                elif target_orientation == 2:
-                    # coronal
-                    target_center_x = (roi.center_LR_mm - target_slice_data.ImagePositionPatient[0]) / spacing_x / cols
-                    target_center_y = 1 - (roi.center_SI_mm - target_slice_data.ImagePositionPatient[2]) / spacing_y / rows
-                elif target_orientation == 3:
-                    # axial
-                    target_center_x = (roi.center_LR_mm - target_slice_data.ImagePositionPatient[0]) / spacing_x / cols
-                    target_center_y = (roi.center_AP_mm - target_slice_data.ImagePositionPatient[1]) / spacing_y / rows
+            target_slice_data = self.dicom_model.get_slice(target_slice_idx, target_series_path)
 
-                # get radius from area_mm2 to pixel radius
-                radius_mm = np.sqrt(roi.area_mm2 / np.pi)
+            # Convert ROI center (mm) to target image coordinates; keep physical radius
+            target_center_x, target_center_y = patient_to_normalized(
+                target_slice_data, target_orientation, roi.center_LR_mm, roi.center_AP_mm, roi.center_SI_mm)
+            spacing_x, _ = get_pixel_spacing(target_slice_data)
+            target_radius_px = np.sqrt(roi.area_mm2 / np.pi) / spacing_x
 
-                # convert radius (mm) to pixel radius then convert to proportion of image size
-                target_radius = radius_mm / spacing_x / cols
-                
-                height, width = target_pixel_array.shape
-                target_center_x_px = int(target_center_x * width)
-                target_center_y_px = int(target_center_y * height)
-                
-                # Create a mask for the circular ROI
-                target_y_indices, target_x_indices = np.ogrid[:height, :width]
-                dist_from_center = np.sqrt((target_x_indices - target_center_x_px)**2 + (target_y_indices - target_center_y_px)**2)
-                mask = dist_from_center <= (target_radius * min(cols, rows))
-                
-                # Get pixel values within the ROI
-                roi_values = target_pixel_array[mask]
-                    
-                # Calculate statistics
-                target_mean_val = np.mean(roi_values)
-                target_median_val = np.median(roi_values)
-                target_min_val = np.min(roi_values)
-                target_max_val = np.max(roi_values)
-                target_size_px = len(roi_values)
-
-
-
-
-                # Copy ROI to target series
-                new_roi = ROI(roi.segment_label, roi.segment, target_slice_idx, target_center_x, target_center_y, target_radius, 
-                                roi.center_LR_mm, roi.center_AP_mm, roi.center_SI_mm, target_orientation, 
-                                roi.area_mm2, target_mean_val, target_median_val, target_min_val, target_max_val, target_size_px, 
-                                self.dicom_model.current_study_name, self.dicom_model.current_exam_number, 
-                                self.dicom_model.current_series_name, self.dicom_model.current_series_uid, target_series_path)
-
+            new_roi = self.create_roi(target_series_path, target_slice_idx, roi.segment,
+                                      target_center_x, target_center_y, target_radius_px)
+            if new_roi is not None:
                 new_rois.append(new_roi)
         
-        # Add new ROIs to current list
+        # Add new ROIs, replacing any ROI with the same segment in the target series
         for new_roi in new_rois:
-            # First check if an ROI with same segment already exists in target series
-            for i, roi in enumerate(self.rois):
-                if roi.segment == new_roi.segment and roi.series_path == target_series_path:
-                    self.delete_roi(i)
-                    break
-            
-            # Add the new ROI
+            self.rois = [r for r in self.rois
+                         if not (r.segment == new_roi.segment and r.series_path == target_series_path)]
             self.rois.append(new_roi)
-        
-
-        self.delete_roi_duplicates()
 
         # Update display
         self.rois_changed.emit()
         
         return len(new_rois) > 0
-        
-    def get_segment_color(self, segment):
-        """Get color based on liver segment"""
-        colors = {
-            1: QColor(255, 0, 0, 128),    # Red
-            2: QColor(0, 255, 0, 128),    # Green
-            3: QColor(0, 0, 255, 128),    # Blue
-            4: QColor(255, 255, 0, 128),  # Yellow
-            5: QColor(255, 0, 255, 128),  # Magenta
-            6: QColor(0, 255, 255, 128),  # Cyan
-            7: QColor(255, 128, 0, 128),  # Orange
-            8: QColor(128, 0, 255, 128),  # Purple
-            9: QColor(0, 128, 128, 128),  # Teal
-        }
-        return colors.get(segment, QColor(255, 255, 255, 128))

@@ -4,7 +4,6 @@ from PyQt5.QtGui import QPainter
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSlider
 
-import numpy as np
 
 class ImageViewerPanel(QWidget):
     """UI panel for displaying and interacting with DICOM images"""
@@ -211,99 +210,24 @@ class ImageViewerPanel(QWidget):
                 QPointF(self.roi_start_pos), label_size
             )
             
-            if norm_x is not None and norm_y is not None:
-                # Calculate radius in normalized units
+            pixmap_rect = self.renderer.get_pixmap_rect(label_size)
+            
+            if norm_x is not None and norm_y is not None and pixmap_rect.width() > 0:
+                # Convert drag distance from display pixels to image pixels
                 current_pt = QPointF(self.roi_current_pos)
                 distance = (current_pt - QPointF(self.roi_start_pos)).manhattanLength() / 2
-                normalized_radius = distance / min(label_size.width(), label_size.height())
+                radius_px = distance * self.renderer.dicom_size[1] / pixmap_rect.width()
                 
                 # Add ROI if it's valid
-                if normalized_radius > 0.01:  # Minimum radius check
-                    # get anatomical position and physical size
-                    anat_pos = (0, 0, 0)
-                    area_mm2 = 0
-
-                    slice_data = self.dicom_model.get_slice(self.dicom_model.current_slice_index)
-                    pixel_array = self.dicom_model.get_slice_pixel_data(self.dicom_model.current_slice_index)
-                    if slice_data:
-                        # Get pixel spacing if available
-                        pixel_spacing = getattr(slice_data, 'PixelSpacing', [1, 1])
-                        rows = getattr(slice_data, 'Rows', 1)
-                        cols = getattr(slice_data, 'Columns', 1)
-                        spacing_x, spacing_y = float(pixel_spacing[1]), float(pixel_spacing[0])
-                        
-                        # Calculate physical area
-                        radius_px = normalized_radius * min(slice_data.Columns, slice_data.Rows)
-                        physical_radius_mm = radius_px * spacing_x  # Assuming square pixels
-                        area_mm2 = np.pi * (physical_radius_mm ** 2)
-                        
-                        # Get anatomical position if available
-                        if hasattr(slice_data, 'ImagePositionPatient'):
-                            anat_pos = slice_data.ImagePositionPatient
-
-                        if hasattr(slice_data, 'ImageOrientationPatient'):
-                            orientation_vec = slice_data.ImageOrientationPatient
-                            orientation_vec_cross = np.cross(orientation_vec[:3], orientation_vec[3:])
-                            orientation_vec_cross_rounded = [round(abs(val), 0) for val in orientation_vec_cross]
-                            orientation = orientation_vec_cross_rounded.index(1.0) + 1
-                            if orientation == 1:
-                                # sagittal
-                                pos_LR = anat_pos[0]
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
-                                pos_SI = anat_pos[2] + (spacing_x * (cols * (1 - norm_x)))
-                            elif orientation == 2:
-                                # coronal
-                                pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
-                                pos_AP = anat_pos[1]
-                                pos_SI = anat_pos[2] + (spacing_y * (rows * (1 - norm_y)))
-                            elif orientation == 3:
-                                # axial
-                                pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
-                                pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
-                                pos_SI = anat_pos[2]
-                        else:
-                            orientation = "N/A"
-                            pos_LR = "N/A"
-                            pos_AP = "N/A"
-                            pos_SI = "N/A"
-                            
-                        
-                        # Get original dimensions
-                        height, width = pixel_array.shape
-                        
-                        # Convert normalized coordinates to pixel coordinates
-                        center_x_px = int(norm_x * width)
-                        center_y_px = int(norm_y * height)
-                        
-                        # Create a mask for the circular ROI
-                        y_indices, x_indices = np.ogrid[:height, :width]
-                        dist_from_center = np.sqrt((x_indices - center_x_px)**2 + (y_indices - center_y_px)**2)
-                        mask = dist_from_center <= radius_px
-                        
-                        # Get pixel values within the ROI
-                        roi_values = pixel_array[mask]
-                        
-                        # Calculate statistics
-                        mean_val = np.mean(roi_values)
-                        median_val = np.median(roi_values)
-                        min_val = np.min(roi_values)
-                        max_val = np.max(roi_values)
-                        size_px = len(roi_values)
-                        
-
-                    self.roi_manager.add_roi(
-                        self.roi_manager.segment_labels[self.roi_manager.current_segment - 1],
-                        self.roi_manager.current_segment,
+                if radius_px > 0.01 * min(self.renderer.dicom_size):  # Minimum radius check
+                    roi = self.roi_manager.create_roi(
+                        self.dicom_model.current_series_path,
                         self.dicom_model.current_slice_index,
-                        norm_x, norm_y, normalized_radius, 
-                        pos_LR, pos_AP, pos_SI, orientation, area_mm2,
-                        mean_val, median_val, min_val, max_val, size_px,
-                        self.dicom_model.current_study_name,
-                        self.dicom_model.current_exam_number,
-                        self.dicom_model.current_series_name,
-                        self.dicom_model.current_series_uid,
-                        self.dicom_model.current_series_path
+                        self.roi_manager.current_segment,
+                        norm_x, norm_y, radius_px
                     )
+                    if roi is not None:
+                        self.roi_manager.add_roi(roi)
             
             # Reset drawing state
             self.roi_start_pos = None
