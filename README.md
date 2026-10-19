@@ -24,8 +24,9 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - ROI Tools: Draw circular ROIs and associate them with liver segments
 - Segmentation Schemes: 9-segment (Couinaud), 4-segment, left/right lobe, or a single whole-liver ROI
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI, using rescaled pixel values (RescaleSlope/Intercept)
-- Export Capabilities: Export ROIs and statistics to CSV files
-- ROI Copy: Copy ROIs between series at anatomical positions
+- Export Capabilities: Export ROIs and statistics to CSV files, including std, ROI scheme, and series/acquisition info (series number/date/time, scanner, TR/TE/flip angle, slice thickness, etc.)
+- Import: Load ROIs from any exported CSV (including older versions); the segmentation scheme switches automatically to match
+- ROI Copy: Copy ROIs between series at anatomical positions (axial, coronal, sagittal, or oblique)
 
 ## Requirements
 - Python 3.6+

@@ -113,6 +113,7 @@ class DicomViewerApp(QMainWindow):
         # Connect ROI manager signals
         self.roi_manager.rois_changed.connect(self.image_viewer.update_display)
         self.roi_manager.rois_changed.connect(self.stats_panel.update_statistics)
+        self.roi_manager.scheme_changed.connect(self.control_panel.on_manager_scheme_changed)
         
         # Connect control panel signals
         self.control_panel.window_level_changed.connect(self.renderer.set_window_level)

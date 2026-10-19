@@ -207,11 +207,20 @@ class ControlPanel(QWidget):
         """Handle segmentation scheme change"""
         scheme = list(SCHEMES)[self.scheme_buttons.id(button)]
 
+        # Segment buttons are rebuilt by on_manager_scheme_changed
         self.roi_manager.set_segmentation_scheme(scheme)
-        self.build_segment_buttons(scheme)
 
         # Select first segment
         self.on_segment_selected(1)
+
+    def on_manager_scheme_changed(self, scheme):
+        """Sync scheme radio buttons and segment buttons when the scheme changes (e.g. on ROI import)"""
+        self.scheme_buttons.button(list(SCHEMES).index(scheme)).setChecked(True)
+        self.build_segment_buttons(scheme)
+
+        # Keep a valid segment selected while drawing
+        if self.draw_roi_button.isChecked():
+            self.on_segment_selected(1)
 
     def build_segment_buttons(self, scheme):
         """Replace the segment buttons with those for the given scheme"""

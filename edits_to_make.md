@@ -5,8 +5,7 @@ Priority: **Need** = need-to-have · **Nice** = nice-to-have
 
 Confirmed: L/R scheme = Left lobe + Right lobe ROIs. No series contain multiple echoes/phases per folder.
 
-Open question:
-- B9 (coronal/sagittal mm coordinates): OK to fix before Phase D? Changes exported mm for non-axial series.
+B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates now use direction cosines.
 
 ---
 
@@ -74,7 +73,7 @@ Open question:
 
 ## Phase C — Export
 
-### [ ] #4 More series information in export (Need)
+### [x] #4 More series information in export (Need)
 - Add columns from `meta`: SeriesNumber, SeriesDate, SeriesTime, AcquisitionTime, StudyDate,
   StudyInstanceUID, AccessionNumber, Modality, Manufacturer, ManufacturerModelName, MagneticFieldStrength,
   RepetitionTime, EchoTime, FlipAngle, EchoNumbers, SliceThickness, PixelSpacing, SliceLocation,
@@ -82,13 +81,13 @@ Open question:
 - Export: write the header from an ordered field list.
 - Import: use `csv.DictReader`; fill missing (older-file) columns with defaults, so old CSVs still import.
 
-### [ ] #4b Store ROI scheme; auto-switch on import (Need — user request)
+### [x] #4b Store ROI scheme; auto-switch on import (Need — user request)
 - Add a "Scheme" column to the export.
 - On import: read the scheme(s) from the file. If one differs from the current scheme, switch the scheme
   programmatically (update the control panel radio buttons and segment buttons) **without** clearing the ROIs being imported.
   If the file has no Scheme column, infer it from the labels. If the file mixes schemes, warn and pick the most common one.
 
-### [ ] B1 One exporter
+### [x] B1 One exporter
 - The "Export Statistics to CSV" button in the stats dialog calls `roi_manager.export_rois` (its separate
   format had no Series UID, so its files couldn't be re-imported). The dialog table shows the same columns.
 
@@ -120,7 +119,7 @@ Open question:
   (No multi-echo/multi-phase splitting needed.)
 - [ ] **B7** DICOM detection: accept files without an extension (check the `DICM` preamble). Use the same file
   filter in the folder scan, `load_series`, and the navigator (`.sdcopen` is currently inconsistent).
-- [ ] **B9** Patient-coordinate (mm) math in `roi_geometry.normalized_to_patient` assumes a fixed convention that
+- [x] **B9** Patient-coordinate (mm) math in `roi_geometry.normalized_to_patient` assumes a fixed convention that
   is only correct for standard axial slices. Coronal SI is offset by the FOV height. Sagittal swaps the AP/SI axes.
   Copying stays self-consistent within one series geometry, but copying between coronal/sagittal series with
   different FOV/position will misplace ROIs. Fix: compute positions from the ImageOrientationPatient direction cosines

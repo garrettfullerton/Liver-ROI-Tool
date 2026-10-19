@@ -147,15 +147,45 @@ class DicomSeriesModel(QObject):
             value = value[0] if len(value) else default
         return value
 
+    @staticmethod
+    def _format_date(value):
+        """YYYYMMDD -> YYYY-MM-DD (leaves other formats unchanged)"""
+        value = str(value)
+        return f"{value[:4]}-{value[4:6]}-{value[6:8]}" if len(value) == 8 and value.isdigit() else value
+
+    @staticmethod
+    def _format_time(value):
+        """HHMMSS(.ffffff) -> HH:MM:SS(.ffffff) so spreadsheets don't strip leading zeros"""
+        value = str(value)
+        if len(value) >= 6 and value[:6].isdigit():
+            return f"{value[:2]}:{value[2:4]}:{value[4:]}"
+        return value
+
     def _extract_meta(self, ds):
         """Series-level information stored with each ROI"""
+        pixel_spacing = getattr(ds, 'PixelSpacing', [None, None])
         meta = {
             'PatientID': str(self._tag(ds, 'PatientID')),
             'StudyID': str(self._tag(ds, 'StudyID')),
             'StudyInstanceUID': str(self._tag(ds, 'StudyInstanceUID')),
+            'StudyDate': self._format_date(self._tag(ds, 'StudyDate')),
+            'AccessionNumber': str(self._tag(ds, 'AccessionNumber')),
             'SeriesInstanceUID': str(self._tag(ds, 'SeriesInstanceUID')),
             'SeriesDescription': str(self._tag(ds, 'SeriesDescription')),
             'SeriesNumber': self._tag(ds, 'SeriesNumber', None),
+            'SeriesDate': self._format_date(self._tag(ds, 'SeriesDate')),
+            'SeriesTime': self._format_time(self._tag(ds, 'SeriesTime')),
+            'Modality': str(self._tag(ds, 'Modality')),
+            'Manufacturer': str(self._tag(ds, 'Manufacturer')),
+            'ManufacturerModelName': str(self._tag(ds, 'ManufacturerModelName')),
+            'MagneticFieldStrength': self._tag(ds, 'MagneticFieldStrength', None),
+            'RepetitionTime': self._tag(ds, 'RepetitionTime', None),
+            'EchoTime': self._tag(ds, 'EchoTime', None),
+            'FlipAngle': self._tag(ds, 'FlipAngle', None),
+            'EchoNumbers': self._tag(ds, 'EchoNumbers', None),
+            'SliceThickness': self._tag(ds, 'SliceThickness', None),
+            'PixelSpacingRow': pixel_spacing[0],
+            'PixelSpacingCol': pixel_spacing[1],
             'Rows': int(self._tag(ds, 'Rows', 0)),
             'Columns': int(self._tag(ds, 'Columns', 0)),
             'WindowCenter': None,
@@ -166,6 +196,17 @@ class DicomSeriesModel(QObject):
             meta['WindowCenter'] = float(self._tag(ds, 'WindowCenter'))
             meta['WindowWidth'] = float(self._tag(ds, 'WindowWidth'))
         return meta
+
+    def get_slice_meta(self, index, series_path=None):
+        """Slice-level information stored with each ROI"""
+        ds = self.get_slice(index, series_path)
+        if ds is None:
+            return {}
+        return {
+            'InstanceNumber': self._tag(ds, 'InstanceNumber', None),
+            'SliceLocation': self._tag(ds, 'SliceLocation', None),
+            'AcquisitionTime': self._format_time(self._tag(ds, 'AcquisitionTime')),
+        }
 
     def read_series(self, series_path):
         """Read (or return cached) slices of a series without making it the current series"""
@@ -227,6 +268,10 @@ class DicomSeriesModel(QObject):
         self.series_loaded.emit()
         
         return True
+
+    def get_series(self, series_path):
+        """Return the (already read) slices of a series"""
+        return self.series_data.get(series_path, [])
 
     def get_series_meta(self, series_path=None):
         """Return series-level information (defaults to current series)"""

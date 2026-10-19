@@ -23,58 +23,50 @@ def get_pixel_values(ds):
     return apply_modality_lut(ds.pixel_array, ds)
 
 
-def normalized_to_patient(ds, norm_x, norm_y):
-    """Convert normalized in-plane coordinates (0-1) to patient (LR, AP, SI) mm.
+def _plane_geometry(ds):
+    """Return (position of first pixel, row direction, column direction) as numpy arrays.
 
+    Row direction is the direction of increasing column index; column direction is increasing row index.
+    """
+    ipp = np.array([float(v) for v in ds.ImagePositionPatient])
+    iop = np.array([float(v) for v in ds.ImageOrientationPatient])
+    return ipp, iop[:3], iop[3:]
+
+
+def normalized_to_patient(ds, norm_x, norm_y):
+    """Convert normalized in-plane coordinates (0-1) to DICOM patient coordinates (x=LR, y=AP, z=SI) in mm.
+
+    Uses ImagePositionPatient/ImageOrientationPatient, so any slice orientation (including oblique) works.
     Returns ((LR, AP, SI), orientation); coordinates are NaN if position/orientation tags are missing.
     """
     orientation = get_orientation(ds)
     if orientation is None or not hasattr(ds, 'ImagePositionPatient'):
         return (np.nan, np.nan, np.nan), orientation
 
-    anat_pos = [float(v) for v in ds.ImagePositionPatient]
+    ipp, row_dir, col_dir = _plane_geometry(ds)
     spacing_x, spacing_y = get_pixel_spacing(ds)
-    rows, cols = ds.Rows, ds.Columns
+    pos = ipp + row_dir * spacing_x * (norm_x * ds.Columns) + col_dir * spacing_y * (norm_y * ds.Rows)
 
-    if orientation == 1:
-        # sagittal
-        pos_LR = anat_pos[0]
-        pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
-        pos_SI = anat_pos[2] + (spacing_x * (cols * (1 - norm_x)))
-    elif orientation == 2:
-        # coronal
-        pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
-        pos_AP = anat_pos[1]
-        pos_SI = anat_pos[2] + (spacing_y * (rows * (1 - norm_y)))
-    else:
-        # axial
-        pos_LR = anat_pos[0] + (spacing_x * (cols * norm_x))
-        pos_AP = anat_pos[1] + (spacing_y * (rows * norm_y))
-        pos_SI = anat_pos[2]
-
-    return (pos_LR, pos_AP, pos_SI), orientation
+    return tuple(float(v) for v in pos), orientation
 
 
-def patient_to_normalized(ds, orientation, pos_LR, pos_AP, pos_SI):
-    """Inverse of normalized_to_patient for a slice with the given orientation"""
-    anat_pos = [float(v) for v in ds.ImagePositionPatient]
+def patient_to_normalized(ds, pos_LR, pos_AP, pos_SI):
+    """Inverse of normalized_to_patient: project a patient-coordinate point onto the slice plane"""
+    ipp, row_dir, col_dir = _plane_geometry(ds)
     spacing_x, spacing_y = get_pixel_spacing(ds)
-    rows, cols = ds.Rows, ds.Columns
+    offset = np.array([pos_LR, pos_AP, pos_SI]) - ipp
 
-    if orientation == 1:
-        # sagittal
-        norm_x = 1 - (pos_SI - anat_pos[2]) / spacing_x / cols
-        norm_y = (pos_AP - anat_pos[1]) / spacing_y / rows
-    elif orientation == 2:
-        # coronal
-        norm_x = (pos_LR - anat_pos[0]) / spacing_x / cols
-        norm_y = 1 - (pos_SI - anat_pos[2]) / spacing_y / rows
-    else:
-        # axial
-        norm_x = (pos_LR - anat_pos[0]) / spacing_x / cols
-        norm_y = (pos_AP - anat_pos[1]) / spacing_y / rows
+    norm_x = offset.dot(row_dir) / spacing_x / ds.Columns
+    norm_y = offset.dot(col_dir) / spacing_y / ds.Rows
 
-    return norm_x, norm_y
+    return float(norm_x), float(norm_y)
+
+
+def distance_to_slice(ds, pos):
+    """Distance (mm) from a patient-coordinate point to the slice plane, along the slice normal"""
+    ipp, row_dir, col_dir = _plane_geometry(ds)
+    normal = np.cross(row_dir, col_dir)
+    return float(abs((np.array(pos) - ipp).dot(normal)))
 
 
 def compute_roi_stats(ds, pixel_values, norm_x, norm_y, radius_px):
