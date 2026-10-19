@@ -291,7 +291,10 @@ class ControlPanel(QWidget):
         """Replace the segment buttons with those for the given scheme"""
         # Clear existing segment buttons
         for i in reversed(range(self.segment_layout.count())):
-            self.segment_layout.takeAt(i).widget().deleteLater()
+            old_button = self.segment_layout.takeAt(i).widget()
+            # Drop the Ctrl+N shortcut now so it can't clash with the new buttons before deletion
+            old_button.setShortcut(QKeySequence())
+            old_button.deleteLater()
 
         self.segment_buttons = {}
         scheme_def = SCHEMES[scheme]

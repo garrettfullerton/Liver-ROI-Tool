@@ -12,6 +12,7 @@ class SeriesNavigatorPanel(QWidget):
     series_selected = pyqtSignal(str)  # Series path
     copy_rois_requested = pyqtSignal()
     folder_opened = pyqtSignal(str)  # root directory
+    info_requested = pyqtSignal()
     
     def __init__(self, parent, dicom_model, roi_manager):
         super().__init__(parent)
@@ -28,6 +29,11 @@ class SeriesNavigatorPanel(QWidget):
         self.open_button = QPushButton("Open Folder")
         self.open_button.clicked.connect(self.open_folder)
         self.layout.addWidget(self.open_button)
+
+        # Help window with features and shortcuts
+        self.info_button = QPushButton("Info / Shortcuts (F1)")
+        self.info_button.clicked.connect(self.info_requested.emit)
+        self.layout.addWidget(self.info_button)
         
         # Series tree
         self.series_tree = QTreeWidget()

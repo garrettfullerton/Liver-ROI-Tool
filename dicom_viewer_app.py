@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog,
-                             QApplication, QAbstractSpinBox, QLineEdit, QMessageBox, QLabel)
+                             QApplication, QAbstractSpinBox, QLineEdit, QMessageBox, QLabel,
+                             QShortcut)
 from PyQt5.QtCore import Qt, QEvent, pyqtSlot
+from PyQt5.QtGui import QKeySequence
 
 from dicom_image_renderer import DicomImageRenderer
 from series_navigator_panel import SeriesNavigatorPanel
@@ -9,6 +11,7 @@ from control_panel import ControlPanel
 from statistics_panel import StatisticsPanel
 from propagate_dialog import PropagateROIsDialog
 from session_manager import SessionManager
+from info_dialog import InfoDialog
 from app_config import get_settings
 
 # from ai_panel import AIControlPanel
@@ -120,6 +123,8 @@ class DicomViewerApp(QMainWindow):
         self.navigator_panel.series_selected.connect(self.dicom_model.load_series)
         self.navigator_panel.copy_rois_requested.connect(self.show_copy_rois_dialog)
         self.navigator_panel.folder_opened.connect(self.session_manager.on_folder_opened)
+        self.navigator_panel.info_requested.connect(self.show_info_dialog)
+        QShortcut(QKeySequence("F1"), self, activated=self.show_info_dialog)
         
         # Connect model signals
         self.dicom_model.series_loaded.connect(self.image_viewer.update_display)
@@ -196,6 +201,10 @@ class DicomViewerApp(QMainWindow):
         self.statusBar().showMessage(text, 15000)
         if is_error:
             QMessageBox.warning(self, "Liver ROI Tool", text)
+
+    def show_info_dialog(self):
+        """Show features, keyboard shortcuts and mouse controls"""
+        InfoDialog(self).exec_()
 
     @pyqtSlot()
     def show_copy_rois_dialog(self):

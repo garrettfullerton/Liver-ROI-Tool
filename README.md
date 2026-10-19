@@ -79,6 +79,7 @@ The table under the ROI controls lists every segment of the current scheme for t
 - `scan_all_files`: also check every other file for a DICOM header (finds extensionless files; slower on large folders)
 
 ## Keyboard Shortcuts
+Click **Info / Shortcuts** (or press **F1**) in the app for a full list of features, shortcuts and mouse controls.
 - **Ctrl+1 to Ctrl+9**: Select liver segments 1-9
 - **Left/Right Arrow or Up/Down Arrow**: Navigate through slices (works from any panel except while typing in a number field)
 - **Mouse Wheel / Touchpad**: Scroll through slices
@@ -88,6 +89,7 @@ The table under the ROI controls lists every segment of the current scheme for t
 - **Right-drag**: Adjust window/level
 - **Ctrl+S**: Export ROIs
 - **E**: Toggle ROI drawing
+- **F1**: Info / shortcuts window
 
 ## Project Structure
 - liver-app.py: Main application entry point
@@ -96,6 +98,7 @@ The table under the ROI controls lists every segment of the current scheme for t
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
 - app_config.py: Loads advanced settings from liver_roi_config.json; remembered UI settings
+- info_dialog.py: In-app help window (features, shortcuts, mouse controls)
 - session_manager.py: Autosave, restore, and unexported-changes warning
 - schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
 - propagate_dialog.py: Dialog for copying/propagating ROIs between series
