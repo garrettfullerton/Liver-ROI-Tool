@@ -3,10 +3,7 @@ import numpy as np
 import csv
 from dataclasses import dataclass, field
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QListWidget, QListWidgetItem, QPushButton, 
-                            QFileDialog, QAbstractItemView)
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QFileDialog
 
 from schemes import SCHEMES, DEFAULT_SCHEME
 from roi_geometry import (compute_roi_stats, patient_to_normalized, get_pixel_spacing,
@@ -331,88 +328,6 @@ class ROIManager(QObject):
         return True
     
     
-    def show_copy_dialog(self, parent=None):
-        """Show dialog to copy ROIs from another series"""
-        if not self.dicom_model.current_series:
-            return False
-            
-        anatomical_positions = self.dicom_model.get_anatomical_positions()
-        current_series_path = self.dicom_model.get_current_series_path()
-        
-        if not anatomical_positions or not current_series_path:
-            return False
-            
-        # Create a new dialog
-        dialog = QDialog(parent)
-        dialog.setWindowTitle("Copy ROIs from Series")
-        dialog.setMinimumSize(600, 400)
-        
-        # Create layout
-        layout = QVBoxLayout(dialog)
-        
-        # Add instruction label
-        label = QLabel("Select a source series to copy ROIs from:")
-        layout.addWidget(label)
-        
-        # Add list widget for series selection
-        series_list = QListWidget()
-        series_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        
-        # Populate list with available series
-        # for series_path in anatomical_positions.keys():
-        series_paths_with_rois = []
-        
-        for roi in self.rois:
-            if roi.series_path in series_paths_with_rois:
-                continue
-            
-            series_paths_with_rois.append(roi.series_path)
-        
-        for series_path in sorted(series_paths_with_rois):
-            # Skip current series
-            if series_path == current_series_path:
-                continue
-                
-            # Get series name from path
-            path_parts = series_path.split(os.sep)
-            if len(path_parts) >= 3:
-                series_name = f"{path_parts[-3]} > {path_parts[-2]} > {path_parts[-1]}"
-            else:
-                series_name = path_parts[-1]
-                
-            item = QListWidgetItem(series_name)
-            item.setData(Qt.UserRole, series_path)
-            series_list.addItem(item)
-        
-        layout.addWidget(series_list)
-        
-        # Add buttons
-        button_layout = QHBoxLayout()
-        copy_button = QPushButton("Copy ROIs")
-        cancel_button = QPushButton("Cancel")
-        
-        copy_button.clicked.connect(lambda: self._copy_rois_from_selected(series_list, dialog))
-        cancel_button.clicked.connect(dialog.reject)
-        
-        button_layout.addWidget(copy_button)
-        button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
-        
-        # Show dialog
-        dialog.exec_()
-        return True
-    
-    def _copy_rois_from_selected(self, series_list, dialog):
-        """Copy ROIs from selected series to current series, matching anatomical positions"""
-        item = series_list.currentItem()
-        if not item:
-            dialog.reject()
-            return
-            
-        source_series_path = item.data(Qt.UserRole)
-        self.copy_rois_from_series(source_series_path)
-        dialog.accept()
-    
     def copy_rois_from_series(self, source_series_path, target_series_path=None, max_distance_mm=5.0):
         """
         Copy ROIs from source to target series based on anatomical coordinates
@@ -423,35 +338,48 @@ class ROIManager(QObject):
             max_distance_mm (float): Maximum allowed distance from ROI center to target slice in mm
             
         Returns:
-            bool: True if any ROIs were copied, False otherwise
+            dict: 'copied' (number of ROIs copied), 'skipped' (reason -> count), 'error' (str or None)
         """
+        result = {'copied': 0, 'skipped': {}, 'error': None}
+        skip = lambda reason: result['skipped'].__setitem__(reason, result['skipped'].get(reason, 0) + 1)
+
         if target_series_path is None:
             target_series_path = self.dicom_model.get_current_series_path()
         
-        if not source_series_path or not target_series_path:
-            return False
+        if not source_series_path or not target_series_path or source_series_path == target_series_path:
+            result['error'] = "invalid source/target series"
+            return result
 
         # Make sure both series are read (target need not be the displayed series)
         if not self.dicom_model.read_series(source_series_path) or not self.dicom_model.read_series(target_series_path):
-            return False
+            result['error'] = "could not read series"
+            return result
         
         target_series = self.dicom_model.get_series(target_series_path)
+        target_orientations = {get_orientation(ds) for ds in target_series}
         
         # Get ROIs from source series
         source_rois = [roi for roi in self.rois if roi.series_path == source_series_path]
         
         if not source_rois:
-            return False
+            result['error'] = "source series has no ROIs"
+            return result
         
         # Copy ROIs to target series
         new_rois = []
 
         for roi in source_rois:
             if roi.segment_label not in self.segment_labels:
+                skip("label not in current scheme")
                 continue
 
             center = (roi.center_LR_mm, roi.center_AP_mm, roi.center_SI_mm)
             if np.isnan(center).any():
+                skip("no position information")
+                continue
+
+            if roi.orientation not in target_orientations:
+                skip("different slice orientation")
                 continue
 
             # Find the target slice (same orientation) closest to the ROI center along the slice normal
@@ -470,6 +398,7 @@ class ROIManager(QObject):
                     best_target_idx = target_idx
             
             if best_target_idx is None:
+                skip(f"no slice within {max_distance_mm:g} mm")
                 continue
 
             target_slice_data = target_series[best_target_idx]
@@ -481,8 +410,10 @@ class ROIManager(QObject):
 
             new_roi = self.create_roi(target_series_path, best_target_idx, roi.segment,
                                       target_center_x, target_center_y, target_radius_px)
-            if new_roi is not None:
-                new_rois.append(new_roi)
+            if new_roi is None:
+                skip("outside target image")
+                continue
+            new_rois.append(new_roi)
         
         # Add new ROIs, replacing any ROI with the same segment in the target series
         for new_roi in new_rois:
@@ -493,4 +424,9 @@ class ROIManager(QObject):
         # Update display
         self.rois_changed.emit()
         
-        return len(new_rois) > 0
+        result['copied'] = len(new_rois)
+        return result
+
+    def get_series_with_rois(self):
+        """Paths of all series that currently have ROIs"""
+        return sorted({roi.series_path for roi in self.rois})

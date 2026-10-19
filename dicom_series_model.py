@@ -269,6 +269,30 @@ class DicomSeriesModel(QObject):
         
         return True
 
+    def get_series_label(self, series_path):
+        """Human-readable series name: '#<SeriesNumber> <SeriesDescription>' (falls back to folder name)"""
+        meta = self.series_meta.get(series_path, {})
+        description = meta.get('SeriesDescription') or os.path.basename(series_path)
+        number = meta.get('SeriesNumber')
+        return f"#{number} {description}" if number not in (None, "") else description
+
+    def _series_number_key(self, series_path):
+        """Sort key ordering series by SeriesNumber, then label"""
+        number = self.series_meta.get(series_path, {}).get('SeriesNumber')
+        try:
+            return (0, int(number), self.get_series_label(series_path))
+        except (TypeError, ValueError):
+            return (1, 0, self.get_series_label(series_path))
+
+    def get_exam_series(self, series_path):
+        """All known series in the same exam (StudyInstanceUID) as series_path, sorted by series number"""
+        study_uid = self.series_meta.get(series_path, {}).get('StudyInstanceUID')
+        paths = [path for path, meta in self.series_meta.items()
+                 if study_uid and meta.get('StudyInstanceUID') == study_uid]
+        if series_path not in paths:
+            paths.append(series_path)
+        return sorted(paths, key=self._series_number_key)
+
     def get_series(self, series_path):
         """Return the (already read) slices of a series"""
         return self.series_data.get(series_path, [])

@@ -12,6 +12,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - [x] Switch between 9-segment, 4-segment, left/right lobe, and whole-liver ROI schemes
 - [x] Copy ROIs between series (registered)
 - [x] Copy ROIs between series (unregistered)
+- [x] Propagate ROIs to all / selected series in an exam
 - [x] Load stored ROIs from a file
 - [X] Verify ROI mean / median accuracy (with Horos, MATLAB, etc)
         - Accuracy verified with Horos
@@ -26,7 +27,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI, using rescaled pixel values (RescaleSlope/Intercept)
 - Export Capabilities: Export ROIs and statistics to CSV files, including std, ROI scheme, and series/acquisition info (series number/date/time, scanner, TR/TE/flip angle, slice thickness, etc.)
 - Import: Load ROIs from any exported CSV (including older versions); the segmentation scheme switches automatically to match
-- ROI Copy: Copy ROIs between series at anatomical positions (axial, coronal, sagittal, or oblique)
+- ROI Copy / Propagate: Copy ROIs from the current series to all or selected series in the same exam, or into the current series from another series, matched by anatomical position (axial, coronal, sagittal, or oblique)
 
 ## Requirements
 - Python 3.6+
@@ -57,6 +58,8 @@ python liver-app.py
 - Toggling "Draw Circular ROI" button
 - Left-clicking and dragging on the image
 - Selecting a liver segment
+6. To reuse ROIs on other series, click "Copy / Propagate ROIs...", check the target series (or Select All), and click "Copy ROIs". A summary lists ROIs copied or skipped per series (e.g. different orientation, no slice within the max distance)
+7. Export ROIs for all series at once with "Export ROIs" (Ctrl+S)
 
 ## Keyboard Shortcuts
 - **Ctrl+1 to Ctrl+9**: Select liver segments 1-9
@@ -70,6 +73,7 @@ python liver-app.py
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
 - schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
+- propagate_dialog.py: Dialog for copying/propagating ROIs between series
 - roi_geometry.py: Shared ROI geometry and statistics (pixel/mm conversion, circular ROI stats)
 - series_navigator_panel.py: Series browser UI panel
 - image_viewer_panel.py: Image display UI panel

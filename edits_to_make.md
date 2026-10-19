@@ -95,7 +95,7 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 
 ## Phase D — Propagation
 
-### [ ] #1 Propagate ROIs to all series / selected series in the exam (Need)
+### [x] #1 Propagate ROIs to all series / selected series in the exam (Need)
 - New dialog (replaces "Copy ROIs from Another Series"). Source = current series. Target list = all series
   with the same StudyInstanceUID (from F1), shown as "#SeriesNumber Description", each with a checkbox, plus Select All / None.
   Keep a "pull from another series" mode for the existing behavior.

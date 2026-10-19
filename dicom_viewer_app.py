@@ -7,6 +7,7 @@ from series_navigator_panel import SeriesNavigatorPanel
 from image_viewer_panel import ImageViewerPanel
 from control_panel import ControlPanel
 from statistics_panel import StatisticsPanel
+from propagate_dialog import PropagateROIsDialog
 
 # from ai_panel import AIControlPanel
 # from ai_model_manager import AIModelManager
@@ -145,5 +146,7 @@ class DicomViewerApp(QMainWindow):
 
     @pyqtSlot()
     def show_copy_rois_dialog(self):
-        """Show dialog to copy ROIs from another series"""
-        self.roi_manager.show_copy_dialog(self)
+        """Show dialog to copy ROIs between series"""
+        if not self.dicom_model.current_series:
+            return
+        PropagateROIsDialog(self, self.dicom_model, self.roi_manager).exec_()

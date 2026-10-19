@@ -30,8 +30,8 @@ class SeriesNavigatorPanel(QWidget):
         self.series_tree.itemClicked.connect(self.on_series_selected)
         self.layout.addWidget(self.series_tree)
         
-        # Button to copy ROIs from another series
-        self.copy_rois_button = QPushButton("Copy ROIs from Another Series")
+        # Button to copy/propagate ROIs between series
+        self.copy_rois_button = QPushButton("Copy / Propagate ROIs...")
         self.copy_rois_button.clicked.connect(self.on_copy_rois_requested)
         self.layout.addWidget(self.copy_rois_button)
     
