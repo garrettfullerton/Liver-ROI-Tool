@@ -1,6 +1,6 @@
 import numpy as np
 from PyQt5.QtCore import QObject, Qt, QRectF, QPointF
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor
+from PyQt5.QtGui import QImage, QPixmap, QPen, QBrush, QColor
 
 from schemes import get_short_label
 
@@ -207,16 +207,6 @@ class DicomImageRenderer(QObject):
         """Image pixels per display pixel"""
         pixmap_rect = self.get_pixmap_rect(label_size)
         return self.dicom_size[1] / pixmap_rect.width() if pixmap_rect.width() > 0 else 0
-    
-    def pixel_to_normalized(self, pixel_x, pixel_y):
-        """Convert pixel coordinates to normalized coordinates (0-1)"""
-        if self.dicom_size[0] == 0 or self.dicom_size[1] == 0:
-            return None, None
-            
-        norm_x = pixel_x / self.dicom_size[1]
-        norm_y = pixel_y / self.dicom_size[0]
-        
-        return norm_x, norm_y
     
     def normalized_to_pixel(self, norm_x, norm_y):
         """Convert normalized coordinates (0-1) to pixel coordinates"""

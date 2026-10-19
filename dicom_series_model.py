@@ -76,7 +76,6 @@ class DicomSeriesModel(QObject):
         self.series_data = {}  # Dictionary of loaded series
         self.series_meta = {}  # Series-level info keyed by path (filled by header scan, then on load)
         self.value_ranges = {}  # (min, max) rescaled pixel values keyed by path
-        self.anatomical_positions = {}  # Mapping of anatomical positions
         self.directory_structure = {}  
         self.current_series_path = None
         self.default_window = 2000
@@ -84,7 +83,6 @@ class DicomSeriesModel(QObject):
         self.current_series_name = ""
         self.current_study_name = ""
         self.current_exam_number = 0
-        self.current_series_uid = ""
     
     def load_directory(self, root_dir):
         """Scan directory structure recursively and find DICOM series at any level"""
@@ -289,9 +287,6 @@ class DicomSeriesModel(QObject):
         self.series_data[series_path] = series_data
         self.series_meta[series_path] = self._extract_meta(series_data[0])
         
-        # Update anatomical positions for this series
-        self.update_anatomical_positions(series_path)
-        
         return series_data
 
     def load_series(self, series_path):
@@ -307,7 +302,6 @@ class DicomSeriesModel(QObject):
         self.current_study_name = meta['PatientID']
         self.current_exam_number = meta['StudyID']
         self.current_series_name = meta['SeriesDescription']
-        self.current_series_uid = meta['SeriesInstanceUID']
 
         if meta['WindowCenter'] is not None:
             self.default_level = meta['WindowCenter']
@@ -432,20 +426,6 @@ class DicomSeriesModel(QObject):
             
         return len(self.current_series)
     
-    def update_anatomical_positions(self, series_path):
-        """Map anatomical positions for a series"""
-        if series_path not in self.anatomical_positions:
-            self.anatomical_positions[series_path] = {}
-            
-            # Map slice indices to anatomical positions
-            for idx, ds in enumerate(self.series_data[series_path]):
-                if hasattr(ds, 'ImagePositionPatient'):
-                    pos = ds.ImagePositionPatient
-                    self.anatomical_positions[series_path][idx] = pos
-                else:
-                    # If no position info, use slice index as z-coordinate
-                    self.anatomical_positions[series_path][idx] = (0, 0, idx)
-    
     def get_directory_structure(self):
         """Return the directory structure"""
         return self.directory_structure
@@ -453,18 +433,3 @@ class DicomSeriesModel(QObject):
     def get_current_series_path(self):
         """Return the path to the current series"""
         return self.current_series_path
-    
-    def get_anatomical_positions(self):
-        """Return the anatomical positions mapping"""
-        return self.anatomical_positions
-    
-    def get_slice_orientations(self, series_path):
-        """Return the slice orientations for a series"""
-        orientations = {}
-        
-        for idx, ds in enumerate(self.series_data.get(series_path, [])):
-            orientation = get_orientation(ds)
-            if orientation is not None:
-                orientations[idx] = orientation
-        
-        return orientations

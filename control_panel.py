@@ -122,7 +122,7 @@ class ControlPanel(QWidget):
         
         self.export_rois_button = QPushButton("Export ROIs")
         self.export_rois_button.clicked.connect(self.on_export_rois)
-        self.export_rois_button.setShortcut(QKeySequence(f"Ctrl+s"))
+        self.export_rois_button.setShortcut(QKeySequence("Ctrl+s"))
 
         
         self.show_stats_button = QPushButton("Show ROI Statistics")

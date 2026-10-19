@@ -1,4 +1,3 @@
-numpy==1.24.3
-pydicom==3.0.1
-PyQt5==5.15.11
-PyQt5_sip==12.11.0
+numpy>=1.24
+pydicom>=3.0
+PyQt5>=5.15

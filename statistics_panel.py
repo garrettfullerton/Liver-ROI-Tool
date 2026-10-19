@@ -108,7 +108,7 @@ class StatisticsPanel(QWidget):
         # Add export button
         export_button = QPushButton("Export Statistics to CSV")
         export_button.clicked.connect(lambda: self.roi_manager.export_rois())
-        export_button.setShortcut(QKeySequence(f"Ctrl+s"))
+        export_button.setShortcut(QKeySequence("Ctrl+s"))
 
         
         # Add close button
