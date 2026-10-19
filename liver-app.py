@@ -8,6 +8,8 @@ from roi_manager import ROIManager
 
 def main():
     app = QApplication(sys.argv)
+    app.setOrganizationName("LiverROITool")
+    app.setApplicationName("LiverROITool")
     dicom_model = DicomSeriesModel()
     roi_manager = ROIManager(dicom_model=dicom_model)
     ai_model_manager = None

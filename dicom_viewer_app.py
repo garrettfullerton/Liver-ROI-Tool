@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog,
-                             QApplication, QAbstractSpinBox, QLineEdit, QMessageBox)
+                             QApplication, QAbstractSpinBox, QLineEdit, QMessageBox, QLabel)
 from PyQt5.QtCore import Qt, QEvent, pyqtSlot
 
 from dicom_image_renderer import DicomImageRenderer
@@ -8,6 +8,8 @@ from image_viewer_panel import ImageViewerPanel
 from control_panel import ControlPanel
 from statistics_panel import StatisticsPanel
 from propagate_dialog import PropagateROIsDialog
+from session_manager import SessionManager
+from app_config import get_settings
 
 # from ai_panel import AIControlPanel
 # from ai_model_manager import AIModelManager
@@ -31,6 +33,9 @@ class DicomViewerApp(QMainWindow):
         
         # Connect signals between components
         self.connect_signals()
+
+        # Apply the remembered fixed-size ROI setting
+        self.control_panel.on_fixed_size_changed()
 
         # Route arrow keys to slice navigation regardless of which widget has focus
         QApplication.instance().installEventFilter(self)
@@ -97,14 +102,24 @@ class DicomViewerApp(QMainWindow):
         # Stats panel can be in control panel or separate
         self.control_panel.layout.addWidget(self.stats_panel)
 
-        # Status bar for import/export/copy results
-        self.statusBar()
+        # Status bar for import/export/copy results, with a permanent cursor readout
+        self.cursor_label = QLabel()
+        self.statusBar().addPermanentWidget(self.cursor_label)
+
+        # Autosave / unexported-changes tracking
+        self.session_manager = SessionManager(self.roi_manager, self)
+
+        # Restore window geometry and fixed-size ROI setting
+        geometry = get_settings().value("geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
     
     def connect_signals(self):
         """Connect signals between components"""
         # Connect navigator panel signals
         self.navigator_panel.series_selected.connect(self.dicom_model.load_series)
         self.navigator_panel.copy_rois_requested.connect(self.show_copy_rois_dialog)
+        self.navigator_panel.folder_opened.connect(self.session_manager.on_folder_opened)
         
         # Connect model signals
         self.dicom_model.series_loaded.connect(self.image_viewer.update_display)
@@ -136,6 +151,11 @@ class DicomViewerApp(QMainWindow):
         self.control_panel.export_rois_requested.connect(self.roi_manager.export_rois)
         self.control_panel.show_stats_requested.connect(self.stats_panel.show_detailed_statistics)
         self.control_panel.import_rois_requested.connect(self.roi_manager.import_rois)
+        self.control_panel.export_summary_requested.connect(self.roi_manager.export_wide)
+        self.control_panel.fixed_size_changed.connect(self.image_viewer.set_fixed_diameter)
+
+        self.image_viewer.cursor_info_changed.connect(self.cursor_label.setText)
+        self.dicom_model.series_loaded.connect(self.image_viewer.reset_view)
 
         self.image_viewer.window_level_changed.connect(self.control_panel.update_window_level)
 
@@ -162,6 +182,14 @@ class DicomViewerApp(QMainWindow):
         self.control_panel.update_window_level(window, level)
 
         self.image_viewer.update_display()
+
+    def closeEvent(self, event):
+        """Warn about unexported ROIs and remember window geometry"""
+        if not self.session_manager.confirm_close():
+            event.ignore()
+            return
+        get_settings().setValue("geometry", self.saveGeometry())
+        event.accept()
 
     def show_message(self, text, is_error=False):
         """Show a message in the status bar; errors also get a warning dialog"""

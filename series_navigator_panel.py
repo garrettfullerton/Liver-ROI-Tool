@@ -1,6 +1,9 @@
+import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget, 
                            QTreeWidgetItem, QFileDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
+
+from app_config import get_settings
 
 class SeriesNavigatorPanel(QWidget):
     """UI panel for series navigation and selection"""
@@ -8,6 +11,7 @@ class SeriesNavigatorPanel(QWidget):
     # Define signals
     series_selected = pyqtSignal(str)  # Series path
     copy_rois_requested = pyqtSignal()
+    folder_opened = pyqtSignal(str)  # root directory
     
     def __init__(self, parent, dicom_model, roi_manager):
         super().__init__(parent)
@@ -38,12 +42,22 @@ class SeriesNavigatorPanel(QWidget):
     
     def open_folder(self):
         """Open a folder dialog and load the DICOM directory structure"""
-        self.root_dir = QFileDialog.getExistingDirectory(self, "Select Patient Directory")
-        if not self.root_dir:
+        settings = get_settings()
+        root_dir = QFileDialog.getExistingDirectory(self, "Select Patient Directory",
+                                                    settings.value("last_folder", ""))
+        if not root_dir:
             return
-            
+
+        # Start the next dialog in the parent folder, so sibling patients are one click away
+        settings.setValue("last_folder", os.path.dirname(os.path.normpath(root_dir)))
+        self.load_folder(root_dir)
+
+    def load_folder(self, root_dir):
+        """Scan a folder for DICOM series and show them in the tree"""
+        self.root_dir = root_dir
         self.dicom_model.load_directory(self.root_dir)
         self.update_tree()
+        self.folder_opened.emit(self.root_dir)
     
     def update_tree(self):
         """Update the series tree based on model data"""

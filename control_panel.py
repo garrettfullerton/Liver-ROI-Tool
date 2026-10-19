@@ -1,10 +1,13 @@
+import math
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                             QGroupBox, QLabel, QSlider, QSpinBox, QRadioButton,
-                            QButtonGroup, QPushButton, QMessageBox)
+                            QButtonGroup, QPushButton, QMessageBox, QCheckBox,
+                            QDoubleSpinBox)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 
 from schemes import SCHEMES, DEFAULT_SCHEME
+from app_config import get_settings
 
 class ControlPanel(QWidget):
     """UI panel for controls (windowing, ROI drawing, segments)"""
@@ -17,6 +20,8 @@ class ControlPanel(QWidget):
     export_rois_requested = pyqtSignal()
     import_rois_requested = pyqtSignal()
     show_stats_requested = pyqtSignal()
+    export_summary_requested = pyqtSignal()
+    fixed_size_changed = pyqtSignal(float)  # ROI diameter in mm (0 = draw by dragging)
     
     def __init__(self, parent, dicom_model, roi_manager, renderer):
         super().__init__(parent)
@@ -123,17 +128,54 @@ class ControlPanel(QWidget):
         self.show_stats_button = QPushButton("Show ROI Statistics")
         self.show_stats_button.clicked.connect(self.on_show_stats)
 
+        self.export_summary_button = QPushButton("Export Summary (1 row/series)")
+        self.export_summary_button.clicked.connect(self.export_summary_requested.emit)
+
+        # Fixed-size ROIs: click to place a circle of the given diameter
+        settings = get_settings()
+        self.fixed_size_checkbox = QCheckBox("Fixed size")
+        self.fixed_size_checkbox.setToolTip("Click on the image to place an ROI of this diameter")
+        self.fixed_size_input = QDoubleSpinBox()
+        self.fixed_size_input.setRange(1.0, 200.0)
+        self.fixed_size_input.setSingleStep(1.0)
+        self.fixed_size_input.setDecimals(1)
+        self.fixed_size_input.setSuffix(" mm")
+        self.fixed_size_input.setValue(float(settings.value("fixed_diameter_mm", 15.0)))
+        self.fixed_size_area_label = QLabel()
+        self.fixed_size_checkbox.setChecked(settings.value("fixed_size_enabled", False, type=bool))
+        self.fixed_size_checkbox.toggled.connect(self.on_fixed_size_changed)
+        self.fixed_size_input.valueChanged.connect(self.on_fixed_size_changed)
+
+        self.fixed_size_layout = QHBoxLayout()
+        self.fixed_size_layout.addWidget(self.fixed_size_checkbox)
+        self.fixed_size_layout.addWidget(self.fixed_size_input)
+        self.fixed_size_layout.addWidget(self.fixed_size_area_label)
+
         
         self.roi_layout.addWidget(self.draw_roi_button)
+        self.roi_layout.addLayout(self.fixed_size_layout)
         self.roi_layout.addWidget(self.import_rois_buton)
         self.roi_layout.addWidget(self.clear_last_roi_button)
         self.roi_layout.addWidget(self.clear_all_rois_button)
         self.roi_layout.addWidget(self.export_rois_button)
         self.roi_layout.addWidget(self.show_stats_button)
+        self.roi_layout.addWidget(self.export_summary_button)
         
         self.roi_group.setLayout(self.roi_layout)
         self.layout.addWidget(self.roi_group)
 
+
+    def on_fixed_size_changed(self, *args):
+        """Remember and emit the fixed ROI size (0 when disabled)"""
+        diameter = self.fixed_size_input.value()
+        enabled = self.fixed_size_checkbox.isChecked()
+        self.fixed_size_area_label.setText(f"({math.pi * (diameter / 20) ** 2:.2f} cm²)")
+        self.fixed_size_input.setEnabled(enabled)
+
+        settings = get_settings()
+        settings.setValue("fixed_diameter_mm", diameter)
+        settings.setValue("fixed_size_enabled", enabled)
+        self.fixed_size_changed.emit(diameter if enabled else 0.0)
 
     def on_import_rois(self):
         self.import_rois_requested.emit()

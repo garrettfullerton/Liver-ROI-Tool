@@ -22,10 +22,13 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - DICOM Browser: Navigate patient/study/series hierarchy
 - Series Viewer: Display DICOM images with customizable window/level settings
 - Image Navigation: Scroll through slices using buttons, keyboard, mouse wheel, or slice slider
-- ROI Tools: Draw circular ROIs and associate them with liver segments
+- ROI Tools: Draw circular ROIs (drag, or click to place a fixed-diameter ROI) and associate them with liver segments; drag an ROI to move it or its edge to resize it
 - Segmentation Schemes: 9-segment (Couinaud), 4-segment, left/right lobe, or a single whole-liver ROI
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI, using rescaled pixel values (RescaleSlope/Intercept)
+- Zoom/Pan and Cursor Readout: zoom at the cursor, pan, and see pixel value and patient position (mm) under the cursor
+- Autosave: unexported ROIs are autosaved per folder and offered for restore when the folder is reopened; closing with unexported ROIs asks first
 - Export Capabilities: Export ROIs and statistics to CSV files, including std, ROI scheme, and series/acquisition info (series number/date/time, scanner, TR/TE/flip angle, slice thickness, etc.)
+- Summary Export: one row per series with Mean/Median/Std/Area/Slice columns per segment
 - Import: Load ROIs from any exported CSV (including older versions) into every matching series in the opened folder (matched by Series UID), replacing or merging with existing ROIs; the segmentation scheme switches automatically to match
 - ROI Copy / Propagate: Copy ROIs from the current series to all or selected series in the same exam, or into the current series from another series, matched by anatomical position (axial, coronal, sagittal, or oblique)
 
@@ -56,7 +59,7 @@ python liver-app.py
 4. Adjust window/level using right-click and drag
 5. Draw ROIs by:
 - Toggling "Draw Circular ROI" button
-- Left-clicking at the ROI center and dragging out to the desired radius
+- Left-clicking at the ROI center and dragging out to the desired radius, or enabling "Fixed size" and clicking to place an ROI of that diameter
 - Selecting a liver segment
 6. To reuse ROIs on other series, click "Copy / Propagate ROIs...", check the target series (or Select All), and click "Copy ROIs". A summary lists ROIs copied or skipped per series (e.g. different orientation, no slice within the max distance)
 7. Export ROIs for all series at once with "Export ROIs" (Ctrl+S)
@@ -80,6 +83,9 @@ The table under the ROI controls lists every segment of the current scheme for t
 - **Left/Right Arrow or Up/Down Arrow**: Navigate through slices (works from any panel except while typing in a number field)
 - **Mouse Wheel / Touchpad**: Scroll through slices
 - **Ctrl+Z**: Clear the last ROI drawn on the current slice
+- **Ctrl+Mouse Wheel**: Zoom at the cursor; **Middle-drag**: Pan; **Ctrl+0**: Reset zoom/pan
+- **Left-drag inside / on the edge of an ROI**: Move / resize it
+- **Right-drag**: Adjust window/level
 - **Ctrl+S**: Export ROIs
 - **E**: Toggle ROI drawing
 
@@ -89,7 +95,8 @@ The table under the ROI controls lists every segment of the current scheme for t
 - dicom_series_model.py: DICOM data management
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
-- app_config.py: Loads advanced settings from liver_roi_config.json
+- app_config.py: Loads advanced settings from liver_roi_config.json; remembered UI settings
+- session_manager.py: Autosave, restore, and unexported-changes warning
 - schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
 - propagate_dialog.py: Dialog for copying/propagating ROIs between series
 - roi_geometry.py: Shared ROI geometry and statistics (pixel/mm conversion, circular ROI stats)

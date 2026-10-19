@@ -131,20 +131,20 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 
 ## Phase F — QOL features
 
-- [ ] **Q1 Fixed-size ROI mode:** a spinbox for diameter (mm) plus a toggle; click to place, using pixel spacing to convert mm to px.
-- [ ] **Q2 Move/resize ROIs:** hit-test existing ROIs on mouse press; drag the center to move it, drag the edge to resize it;
+- [x] **Q1 Fixed-size ROI mode:** a spinbox for diameter (mm) plus a toggle; click to place, using pixel spacing to convert mm to px.
+- [x] **Q2 Move/resize ROIs:** hit-test existing ROIs on mouse press; drag the center to move it, drag the edge to resize it;
   recompute stats on release.
 - [x] **Q3 Better series tree:** label leaf nodes "#SeriesNumber – Description" (from F1), sort by series number,
   and add an ROI-count badge ("✓ 9/9") that updates on `rois_changed`.
 - [x] **Q4 Segment checklist:** the stats table lists every segment for the current series (slice + stats, "—" if missing,
   bold = on this slice); double-clicking a row jumps to that slice. Segment buttons show ✓ once drawn.
-- [ ] **Q5 Autosave + unsaved warning:** after each change, write a session CSV to a temp/app-data folder; prompt on
+- [x] **Q5 Autosave + unsaved warning:** after each change, write a session CSV to a temp/app-data folder; prompt on
   `closeEvent` if there are unexported changes. Use `QSettings` to remember the last folder, scheme, and fixed ROI size.
-- [ ] **Q6 Zoom/pan:** zoom factor and offset in the renderer (Ctrl+wheel to zoom, middle-drag to pan). Coordinate
+- [x] **Q6 Zoom/pan:** zoom factor and offset in the renderer (Ctrl+wheel to zoom, middle-drag to pan). Coordinate
   conversions go through a single transform.
-- [ ] **Q7 Cursor readout:** status bar showing the pixel value (rescaled) and LR/AP/SI mm under the cursor, using
+- [x] **Q7 Cursor readout:** status bar showing the pixel value (rescaled) and LR/AP/SI mm under the cursor, using
   the existing `renderer.get_pixel_value`.
-- [ ] **Q8 Wide export:** an extra export option with one row per series and columns `<label>_mean`, `<label>_std`, …
+- [x] **Q8 Wide export:** an extra export option with one row per series and columns `<label>_mean`, `<label>_std`, …
 - [x] **Q9 In-app messages:** replace `print()` with a `QStatusBar` / `QMessageBox` for import, export, and copy results.
 - [x] **Q10 Euclidean drag radius:** the radius equals the drag distance (currently the Manhattan distance / 2). The preview matches the final ROI.
 

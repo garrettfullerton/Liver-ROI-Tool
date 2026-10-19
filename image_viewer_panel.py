@@ -1,13 +1,21 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QShortcut
 from PyQt5.QtCore import Qt, QSize, QPointF, QLineF
-from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QPainter, QKeySequence
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSlider
+import numpy as np
+
+from roi_geometry import get_pixel_spacing, normalized_to_patient
+
+
+EDGE_TOLERANCE_PX = 6  # display pixels from an ROI's edge that count as "resize"
+ZOOM_STEP = 1.25  # zoom factor per wheel notch (Ctrl+wheel)
 
 
 class ImageViewerPanel(QWidget):
     """UI panel for displaying and interacting with DICOM images"""
     window_level_changed = pyqtSignal(int, int)
+    cursor_info_changed = pyqtSignal(str)  # pixel position/value/mm under the cursor
 
     def __init__(self, parent, dicom_model, roi_manager, renderer):
         super().__init__(parent)
@@ -18,6 +26,13 @@ class ImageViewerPanel(QWidget):
         self.roi_start_pos = None
         self.roi_current_pos = None
         self.wheel_accum = 0
+        self.mode = None  # current mouse interaction: 'draw', 'move', 'resize', 'pan', 'window_level'
+        self.last_pos = None
+        self.hover_pos = None
+        self.drag_roi = None
+        self.drag_start = None
+        self.drag_original = None
+        self.fixed_diameter_mm = 0  # 0 = draw ROIs by dragging
 
     def setup_ui(self):
         """Set up UI components for image viewing"""
@@ -79,6 +94,7 @@ class ImageViewerPanel(QWidget):
         self.image_label.mouseMoveEvent = self.on_mouse_move
         self.image_label.mouseReleaseEvent = self.on_mouse_release
         self.image_label.wheelEvent = self.on_wheel
+        self.image_label.leaveEvent = self.on_leave
         self.image_label.paintEvent = self.on_paint
         
         # Enable mouse tracking for hovering effects
@@ -90,6 +106,9 @@ class ImageViewerPanel(QWidget):
         self.image_label.setAlignment(Qt.AlignCenter)
         
         self.layout.addWidget(self.image_label)
+
+        # Reset zoom/pan
+        QShortcut(QKeySequence("Ctrl+0"), self, activated=self.reset_view)
 
         # blank label for spacing
         self.layout.addWidget(QLabel(""))
@@ -151,90 +170,204 @@ class ImageViewerPanel(QWidget):
         """Handle next slice button click"""
         self.dicom_model.next_slice()
     
+    def hit_test(self, display_pos):
+        """Return (roi, 'edge' | 'inside') for an ROI on the current slice under display_pos, else (None, None)"""
+        label_size = self.image_label.size()
+        rois = self.roi_manager.get_rois_for_slice(self.dicom_model.current_slice_index,
+                                                   self.dicom_model.current_series_path)
+        # Edges first, so small ROIs can still be resized
+        for part in ('edge', 'inside'):
+            for roi in reversed(rois):
+                center, radius = self.renderer.roi_display_geometry(roi, label_size)
+                distance = QLineF(center, display_pos).length()
+                if part == 'edge' and abs(distance - radius) <= EDGE_TOLERANCE_PX:
+                    return roi, part
+                if part == 'inside' and distance < radius:
+                    return roi, part
+        return None, None
+
+    def fixed_radius_px(self):
+        """Radius in image pixels for fixed-size ROIs on the current slice (None if fixed size is off)"""
+        slice_data = self.dicom_model.get_current_slice()
+        if not self.fixed_diameter_mm or slice_data is None:
+            return None
+        spacing_x, _ = get_pixel_spacing(slice_data)
+        return self.fixed_diameter_mm / 2 / spacing_x
+
+    def set_fixed_diameter(self, diameter_mm):
+        """Set fixed ROI diameter in mm (0 = draw by dragging)"""
+        self.fixed_diameter_mm = diameter_mm
+        self.image_label.update()
+
     def on_mouse_press(self, event):
         """Handle mouse press on the image"""
+        pos = QPointF(event.pos())
         if event.button() == Qt.RightButton:
             # Window/level adjustment with right button
-            self.mouse_pressed = True
-            self.last_pos = event.pos()
-        elif event.button() == Qt.LeftButton and self.drawing_roi:
-            # Start drawing ROI with left button when in drawing mode
-            self.roi_start_pos = event.pos()
-            self.roi_current_pos = event.pos()
+            self.mode = 'window_level'
+            self.last_pos = pos
+        elif event.button() == Qt.MiddleButton:
+            # Pan with middle button
+            self.mode = 'pan'
+            self.last_pos = pos
+        elif event.button() == Qt.LeftButton:
+            roi, part = self.hit_test(pos)
+            if roi is not None:
+                # Move (inside) or resize (edge) an existing ROI
+                self.mode = 'move' if part == 'inside' else 'resize'
+                self.drag_roi = roi
+                self.drag_start = pos
+                self.drag_original = (roi.center_x, roi.center_y, roi.radius_px)
+            elif self.drawing_roi:
+                # Start drawing ROI with left button when in drawing mode
+                self.mode = 'draw'
+                self.roi_start_pos = pos
+                self.roi_current_pos = pos
             self.image_label.update()
     
     def on_mouse_move(self, event):
         """Handle mouse movement on the image"""
-        if hasattr(self, 'mouse_pressed') and self.mouse_pressed and hasattr(self, 'last_pos') and event.buttons() & Qt.RightButton:
+        pos = QPointF(event.pos())
+        self.hover_pos = pos
+        self.update_cursor_info(pos)
+
+        if self.mode == 'window_level':
             # Window/level adjustment with right button
-            dx = event.x() - self.last_pos.x()
-            dy = event.y() - self.last_pos.y()
-            
-            # Get current window/level
-            window = self.renderer.window
-            level = self.renderer.level
+            dx = pos.x() - self.last_pos.x()
+            dy = pos.y() - self.last_pos.y()
             
             # Update window/level based on mouse movement
-            window += dx * self.renderer.drag_step
+            window = self.renderer.window + dx * self.renderer.drag_step
             window = int(max(1, min(self.renderer.window_max, window)))
             
-            level -= dy * self.renderer.drag_step
+            level = self.renderer.level - dy * self.renderer.drag_step
             level = int(max(self.renderer.level_min, min(self.renderer.level_max, level)))
             
             # Update renderer
             self.renderer.set_window_level(window, level)
-
-            # Force repaint
-            self.image_label.update()
-
             self.window_level_changed.emit(window, level)
-            
-            self.last_pos = event.pos()
-        elif self.drawing_roi and self.roi_start_pos:
+            self.last_pos = pos
+        elif self.mode == 'pan':
+            self.renderer.pan += pos - self.last_pos
+            self.last_pos = pos
+        elif self.mode in ('move', 'resize'):
+            pixmap_rect = self.renderer.get_pixmap_rect(self.image_label.size())
+            center_x, center_y, radius_px = self.drag_original
+            if self.mode == 'move':
+                delta = pos - self.drag_start
+                self.drag_roi.center_x = center_x + delta.x() / pixmap_rect.width()
+                self.drag_roi.center_y = center_y + delta.y() / pixmap_rect.height()
+            else:
+                center, _ = self.renderer.roi_display_geometry(self.drag_roi, self.image_label.size())
+                scale = self.renderer.display_to_image_scale(self.image_label.size())
+                self.drag_roi.radius_px = max(1.0, QLineF(center, pos).length() * scale)
+        elif self.mode == 'draw':
             # Update ROI preview while drawing
-            self.roi_current_pos = event.pos()
-            self.image_label.update()
+            self.roi_current_pos = pos
+        else:
+            # Hover: show move/resize cursor over ROIs
+            _, part = self.hit_test(pos)
+            if part == 'inside':
+                self.image_label.setCursor(Qt.SizeAllCursor)
+            elif part == 'edge':
+                self.image_label.setCursor(Qt.SizeFDiagCursor)
+            else:
+                self.image_label.setCursor(Qt.CrossCursor if self.drawing_roi else Qt.ArrowCursor)
+
+        self.image_label.update()
     
     def on_mouse_release(self, event):
         """Handle mouse release on the image"""
-        if event.button() == Qt.RightButton:
-            # End window/level adjustment
-            self.mouse_pressed = False
-            self.last_pos = None
-        elif event.button() == Qt.LeftButton and self.drawing_roi and self.roi_start_pos:
-            # Finalize ROI
-            label_size = self.image_label.size()
-            
-            # Convert to normalized coordinates
-            norm_x, norm_y = self.renderer.display_to_normalized(
-                QPointF(self.roi_start_pos), label_size
-            )
-            
-            pixmap_rect = self.renderer.get_pixmap_rect(label_size)
-            
-            if norm_x is not None and norm_y is not None and pixmap_rect.width() > 0:
+        mode, self.mode = self.mode, None
+        if mode in ('move', 'resize'):
+            self.finish_roi_edit()
+        elif mode == 'draw' and event.button() == Qt.LeftButton:
+            self.finish_roi_drawing()
+        self.image_label.update()
+
+    def finish_roi_edit(self):
+        """Recompute statistics for a moved/resized ROI (restore it if the edit is invalid)"""
+        roi = self.drag_roi
+        self.drag_roi = None
+        if (roi.center_x, roi.center_y, roi.radius_px) == self.drag_original:
+            return
+        
+        new_roi = self.roi_manager.create_roi(roi.series_path, roi.slice_idx, roi.segment,
+                                              roi.center_x, roi.center_y, roi.radius_px)
+        if new_roi is None or not (0 <= roi.center_x <= 1 and 0 <= roi.center_y <= 1):
+            roi.center_x, roi.center_y, roi.radius_px = self.drag_original
+            return
+        self.roi_manager.add_roi(new_roi)
+
+    def finish_roi_drawing(self):
+        """Create an ROI from the drag (or click, in fixed-size mode)"""
+        label_size = self.image_label.size()
+        fixed_radius_px = self.fixed_radius_px()
+        
+        # Fixed size: centered where the mouse is released; otherwise where the drag started
+        center_pos = self.roi_current_pos if fixed_radius_px else self.roi_start_pos
+        norm_x, norm_y = self.renderer.display_to_normalized(center_pos, label_size)
+        
+        if norm_x is not None and norm_y is not None:
+            if fixed_radius_px:
+                radius_px = fixed_radius_px
+            else:
                 # Convert drag distance from display pixels to image pixels
-                distance = QLineF(QPointF(self.roi_start_pos), QPointF(self.roi_current_pos)).length()
-                radius_px = distance * self.renderer.dicom_size[1] / pixmap_rect.width()
-                
-                # Add ROI if it's valid
-                if radius_px > 0.01 * min(self.renderer.dicom_size):  # Minimum radius check
-                    roi = self.roi_manager.create_roi(
-                        self.dicom_model.current_series_path,
-                        self.dicom_model.current_slice_index,
-                        self.roi_manager.current_segment,
-                        norm_x, norm_y, radius_px
-                    )
-                    if roi is not None:
-                        self.roi_manager.add_roi(roi)
+                distance = QLineF(self.roi_start_pos, self.roi_current_pos).length()
+                radius_px = distance * self.renderer.display_to_image_scale(label_size)
             
-            # Reset drawing state
-            self.roi_start_pos = None
-            self.roi_current_pos = None
-            self.image_label.update()
+            # Add ROI if it's valid
+            if fixed_radius_px or radius_px > 0.01 * min(self.renderer.dicom_size):  # Minimum radius check
+                roi = self.roi_manager.create_roi(
+                    self.dicom_model.current_series_path,
+                    self.dicom_model.current_slice_index,
+                    self.roi_manager.current_segment,
+                    norm_x, norm_y, radius_px
+                )
+                if roi is not None:
+                    self.roi_manager.add_roi(roi)
+        
+        # Reset drawing state
+        self.roi_start_pos = None
+        self.roi_current_pos = None
+
+    def update_cursor_info(self, display_pos):
+        """Emit pixel coordinates, value and patient position (mm) under the cursor"""
+        norm_x, norm_y = self.renderer.display_to_normalized(display_pos, self.image_label.size())
+        slice_data = self.dicom_model.get_current_slice()
+        if norm_x is None or slice_data is None:
+            self.cursor_info_changed.emit("")
+            return
+        
+        col, row = self.renderer.normalized_to_pixel(norm_x, norm_y)
+        value = self.renderer.get_pixel_value(norm_x, norm_y)
+        (pos_LR, pos_AP, pos_SI), _ = normalized_to_patient(slice_data, norm_x, norm_y)
+        text = f"x {col}, y {row}"
+        if value is not None:
+            text += f"  |  value {float(value):.2f}"
+        if not np.isnan(pos_LR):
+            text += f"  |  LR {pos_LR:.1f}  AP {pos_AP:.1f}  SI {pos_SI:.1f} mm"
+        self.cursor_info_changed.emit(text)
+
+    def on_leave(self, event):
+        """Clear hover preview and cursor readout when the mouse leaves the image"""
+        self.hover_pos = None
+        self.cursor_info_changed.emit("")
+        self.image_label.update()
+
+    def reset_view(self):
+        """Reset zoom/pan"""
+        self.renderer.reset_view()
+        self.image_label.update()
     
     def on_wheel(self, event):
-        """Handle mouse wheel for slice navigation"""
+        """Handle mouse wheel: slice navigation, or zoom with Ctrl held"""
+        if event.modifiers() & Qt.ControlModifier:
+            factor = ZOOM_STEP ** (event.angleDelta().y() / 120)
+            self.renderer.zoom_at(QPointF(event.pos()), factor, self.image_label.size())
+            self.image_label.update()
+            return
+
         # Accumulate wheel delta so high-resolution wheels/touchpads (small deltas) still step;
         # int() truncates toward zero so up and down behave symmetrically
         self.wheel_accum += event.angleDelta().y()
@@ -263,13 +396,19 @@ class ImageViewerPanel(QWidget):
         # Get ROIs for current slice
         current_rois = self.roi_manager.get_rois_for_slice(self.dicom_model.current_slice_index, self.dicom_model.current_series_path)
         
-        # Create drawing ROI data if needed
+        # Preview of the ROI being created (display coordinates)
         drawing_roi = None
-        if self.drawing_roi and self.roi_start_pos and self.roi_current_pos:
-            drawing_roi = {
-                'start': self.roi_start_pos,
-                'current': self.roi_current_pos
-            }
+        fixed_radius_px = self.fixed_radius_px()
+        if self.drawing_roi and fixed_radius_px and self.mode is None and self.hover_pos is not None:
+            scale = self.renderer.display_to_image_scale(self.image_label.size())
+            drawing_roi = {'center': self.hover_pos, 'radius': fixed_radius_px / scale}
+        elif self.mode == 'draw' and self.roi_current_pos is not None:
+            if fixed_radius_px:
+                scale = self.renderer.display_to_image_scale(self.image_label.size())
+                drawing_roi = {'center': self.roi_current_pos, 'radius': fixed_radius_px / scale}
+            else:
+                drawing_roi = {'center': self.roi_start_pos,
+                               'radius': QLineF(self.roi_start_pos, self.roi_current_pos).length()}
         
         # Render the image and ROIs
         self.renderer.render(

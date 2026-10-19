@@ -107,6 +107,7 @@ class ROIManager(QObject):
     rois_changed = pyqtSignal()
     scheme_changed = pyqtSignal(str)  # scheme name
     message = pyqtSignal(str, bool)  # text, is_error (shown in the status bar / a warning dialog)
+    saved = pyqtSignal()  # all ROIs written to (or freshly loaded from) a user CSV
     
     def __init__(self, dicom_model):
         super().__init__()
@@ -214,16 +215,62 @@ class ROIManager(QObject):
             filename += '.csv'
         
         try:
-            with open(filename, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([header for header, _ in EXPORT_COLUMNS])
-                for roi in self.rois:
-                    writer.writerow([format_value(getter(roi)) for _, getter in EXPORT_COLUMNS])
+            self.write_csv(filename)
             n_series = len(self.get_series_with_rois())
             self.message.emit(f"Exported {len(self.rois)} ROIs from {n_series} series to {os.path.basename(filename)}", False)
+            self.saved.emit()
             return True
         except Exception as e:
             self.message.emit(f"Error exporting ROIs: {e}", True)
+            return False
+
+    def write_csv(self, filename):
+        """Write all ROIs to a CSV file (one row per ROI)"""
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([header for header, _ in EXPORT_COLUMNS])
+            for roi in self.rois:
+                writer.writerow([format_value(getter(roi)) for _, getter in EXPORT_COLUMNS])
+
+    def export_wide(self, filename=None):
+        """Export a summary CSV with one row per series and columns per segment"""
+        if not self.rois:
+            self.message.emit("No ROIs to export", True)
+            return False
+
+        if filename is None:
+            default_path = f"{self.dicom_model.current_study_name}_{self.dicom_model.current_exam_number}_{self.segmentation_scheme}_summary.csv"
+            filename, _ = QFileDialog.getSaveFileName(None, "Save Summary", default_path, "CSV Files (*.csv)")
+        if not filename:
+            return False
+        if not filename.lower().endswith('.csv'):
+            filename += '.csv'
+
+        series_columns = [("Study ID", 'PatientID'), ("Exam Number", 'StudyID'), ("Series Number", 'SeriesNumber'),
+                          ("Series ID", 'SeriesDescription'), ("Series Date", 'SeriesDate'),
+                          ("Series Time", 'SeriesTime'), ("Series UID", 'SeriesInstanceUID')]
+        stat_columns = [("Mean", lambda r: r.mean_val), ("Median", lambda r: r.median_val),
+                        ("Std", lambda r: r.std_val), ("Area (mm2)", lambda r: r.area_mm2),
+                        ("Slice", lambda r: r.slice_idx + 1)]
+
+        header = ([name for name, _ in series_columns] + ["Series Path", "Scheme"]
+                  + [f"{label} {stat}" for label in self.segment_labels for stat, _ in stat_columns])
+        try:
+            with open(filename, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                for series_path in sorted(self.get_series_with_rois(), key=self.dicom_model.series_sort_key):
+                    meta = self.dicom_model.get_series_meta(series_path)
+                    rois_by_segment = {roi.segment: roi for roi in self.rois if roi.series_path == series_path}
+                    row = [format_value(meta.get(key)) for _, key in series_columns] + [series_path, self.segmentation_scheme]
+                    for segment in range(1, len(self.segment_labels) + 1):
+                        roi = rois_by_segment.get(segment)
+                        row += [format_value(getter(roi)) if roi else "" for _, getter in stat_columns]
+                    writer.writerow(row)
+            self.message.emit(f"Exported summary of {len(self.get_series_with_rois())} series to {os.path.basename(filename)}", False)
+            return True
+        except Exception as e:
+            self.message.emit(f"Error exporting summary: {e}", True)
             return False
 
     def _detect_scheme(self, rows, current_scheme):
@@ -355,6 +402,9 @@ class ROIManager(QObject):
                                        
             except (ValueError, IndexError):
                 skip("unreadable row")
+
+        if mode == "replace" and imported:
+            self.saved.emit()
 
         summary = f"Imported {imported} ROIs into {len(imported_series)} series"
         if skipped:

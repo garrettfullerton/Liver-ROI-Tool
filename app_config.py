@@ -37,3 +37,9 @@ def load_config():
 
 
 CONFIG = load_config()
+
+
+def get_settings():
+    """Remembered UI state (last folder, fixed ROI size, window geometry)"""
+    from PyQt5.QtCore import QSettings
+    return QSettings("LiverROITool", "LiverROITool")

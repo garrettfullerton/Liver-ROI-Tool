@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt5.QtCore import QObject, Qt, QRectF, QPointF, QLineF
+from PyQt5.QtCore import QObject, Qt, QRectF, QPointF
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor
 
 from schemes import get_short_label
@@ -21,6 +21,35 @@ class DicomImageRenderer(QObject):
         self.level_min = -2000
         self.level_max = 2000
         self.drag_step = 3
+        # View zoom (1 = fit to panel) and pan offset in display pixels
+        self.zoom = 1.0
+        self.pan = QPointF(0, 0)
+    
+    def reset_view(self):
+        """Reset zoom and pan to fit the image in the panel"""
+        self.zoom = 1.0
+        self.pan = QPointF(0, 0)
+    
+    def zoom_at(self, display_pos, factor, label_size, max_zoom=10.0):
+        """Zoom by factor, keeping the image point under display_pos fixed"""
+        rect = self.get_pixmap_rect(label_size)
+        if not rect.isValid():
+            return
+        
+        new_zoom = min(max(self.zoom * factor, 1.0), max_zoom)
+        u = (display_pos.x() - rect.x()) / rect.width()
+        v = (display_pos.y() - rect.y()) / rect.height()
+        
+        fit = self._fit_rect(label_size)
+        width, height = fit.width() * new_zoom, fit.height() * new_zoom
+        new_x = display_pos.x() - u * width
+        new_y = display_pos.y() - v * height
+        
+        self.zoom = new_zoom
+        if new_zoom == 1.0:
+            self.pan = QPointF(0, 0)
+        else:
+            self.pan = QPointF(new_x - (fit.center().x() - width / 2), new_y - (fit.center().y() - height / 2))
     
     def set_window_level_limits(self, window_max, level_min, level_max, drag_step):
         """Set allowed window/level ranges and right-drag step size"""
@@ -81,7 +110,17 @@ class DicomImageRenderer(QObject):
         return self.pixmap
     
     def get_pixmap_rect(self, label_size):
-        """Calculate the rectangle where the pixmap will be drawn"""
+        """Calculate the rectangle where the pixmap will be drawn (including zoom and pan)"""
+        fit = self._fit_rect(label_size)
+        if not fit.isValid():
+            return fit
+        
+        width, height = fit.width() * self.zoom, fit.height() * self.zoom
+        return QRectF(fit.center().x() - width / 2 + self.pan.x(),
+                      fit.center().y() - height / 2 + self.pan.y(), width, height)
+    
+    def _fit_rect(self, label_size):
+        """Rectangle of the image scaled to fit the panel (no zoom/pan)"""
         if self.pixmap is None:
             return QRectF()
             
@@ -134,19 +173,11 @@ class DicomImageRenderer(QObject):
                 painter.drawText(QRectF(scaled_x - 10, scaled_y - 10, 20, 20), 
                                 Qt.AlignCenter, segment_label_disp)
         
-        # Draw ROI being created
-        if drawing_roi and 'start' in drawing_roi and 'current' in drawing_roi:
-            start_pos = drawing_roi['start']
-            current_pos = drawing_roi['current']
-            
-            # Calculate center and radius
-            center = QPointF(start_pos)
-            radius = QLineF(QPointF(start_pos), QPointF(current_pos)).length()
-            
-            # Draw preview circle
+        # Draw preview of the ROI being created (center/radius in display pixels)
+        if drawing_roi:
             painter.setPen(QPen(Qt.yellow, 2, Qt.DashLine))
             painter.setBrush(QBrush(Qt.yellow, Qt.NoBrush))
-            painter.drawEllipse(center, radius, radius)
+            painter.drawEllipse(drawing_roi['center'], drawing_roi['radius'], drawing_roi['radius'])
         
         return True
     
@@ -164,6 +195,18 @@ class DicomImageRenderer(QObject):
             9: QColor(0, 128, 128, 128),  # Teal
         }
         return colors.get(segment, QColor(255, 255, 255, 128))
+    
+    def roi_display_geometry(self, roi, label_size):
+        """(center, radius) of an ROI in display pixels"""
+        pixmap_rect = self.get_pixmap_rect(label_size)
+        center = QPointF(pixmap_rect.x() + roi.center_x * pixmap_rect.width(),
+                         pixmap_rect.y() + roi.center_y * pixmap_rect.height())
+        return center, roi.radius_px * pixmap_rect.width() / self.dicom_size[1]
+    
+    def display_to_image_scale(self, label_size):
+        """Image pixels per display pixel"""
+        pixmap_rect = self.get_pixmap_rect(label_size)
+        return self.dicom_size[1] / pixmap_rect.width() if pixmap_rect.width() > 0 else 0
     
     def pixel_to_normalized(self, pixel_x, pixel_y):
         """Convert pixel coordinates to normalized coordinates (0-1)"""
