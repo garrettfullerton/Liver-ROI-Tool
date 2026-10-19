@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                            QPushButton, QDialog, QHBoxLayout)
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeySequence, QColor
 
 from roi_manager import EXPORT_COLUMNS, format_value
 
@@ -15,10 +16,13 @@ class StatisticsPanel(QWidget):
         """Set up UI components for statistics"""
         self.layout = QVBoxLayout(self)
         
-        # Statistics table
-        self.stats_table = QTableWidget(0, 6)  # Rows will be added dynamically
-        self.stats_table.setHorizontalHeaderLabels(["Segment", "Mean", "Median", "Std", "Min", "Max"])
+        # Per-series ROI checklist: one row per segment of the scheme; double-click jumps to the ROI's slice
+        self.stats_table = QTableWidget(0, 7)  # Rows will be added dynamically
+        self.stats_table.setHorizontalHeaderLabels(["Segment", "Slice", "Mean", "Median", "Std", "Min", "Max"])
         self.stats_table.horizontalHeader().setStretchLastSection(True)
+        self.stats_table.verticalHeader().setVisible(False)
+        self.stats_table.setToolTip("ROIs in the current series (bold = on this slice). Double-click to go to the slice.")
+        self.stats_table.cellDoubleClicked.connect(self.on_row_double_clicked)
         
         # Set table properties
         self.stats_table.setEditTriggers(QTableWidget.NoEditTriggers)  # Read-only
@@ -27,33 +31,44 @@ class StatisticsPanel(QWidget):
         self.layout.addWidget(self.stats_table)
     
     def update_statistics(self):
-        """Update the ROI statistics table for current slice"""
+        """Update the ROI checklist/statistics table for the current series"""
         # Clear the table
         self.stats_table.setRowCount(0)
         
-        # Get current slice index from the model
         if not self.dicom_model.current_series:
             return
             
         current_slice = self.dicom_model.current_slice_index
+        series_rois = {roi.segment: roi for roi in self.roi_manager.rois
+                       if roi.series_path == self.dicom_model.current_series_path}
         
-        # Get ROIs for current slice
-        current_slice_rois = self.roi_manager.get_rois_for_slice(current_slice, self.dicom_model.current_series_path)
-        
-        
-        # Add stats for each ROI
-        for roi in current_slice_rois:            
-            # Add a new row
+        for segment, label in enumerate(self.roi_manager.segment_labels, start=1):
+            roi = series_rois.get(segment)
+            if roi is None:
+                values = [label, "—", "", "", "", "", ""]
+            else:
+                values = [label, str(roi.slice_idx + 1)] + [f"{v:.2f}" for v in (
+                    roi.mean_val, roi.median_val, roi.std_val, roi.min_val, roi.max_val)]
+
             row = self.stats_table.rowCount()
             self.stats_table.insertRow(row)
-                        
-            # Add data to the row
-            self.stats_table.setItem(row, 0, QTableWidgetItem(roi.segment_label))
-            self.stats_table.setItem(row, 1, QTableWidgetItem(f"{roi.mean_val:.2f}"))
-            self.stats_table.setItem(row, 2, QTableWidgetItem(f"{roi.median_val:.2f}"))
-            self.stats_table.setItem(row, 3, QTableWidgetItem(f"{roi.std_val:.2f}"))
-            self.stats_table.setItem(row, 4, QTableWidgetItem(f"{roi.min_val:.2f}"))
-            self.stats_table.setItem(row, 5, QTableWidgetItem(f"{roi.max_val:.2f}"))
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if roi is None:
+                    item.setForeground(QColor(Qt.gray))
+                elif roi.slice_idx == current_slice:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                self.stats_table.setItem(row, col, item)
+
+    def on_row_double_clicked(self, row, column):
+        """Jump to the slice of the ROI in the clicked row"""
+        segment = row + 1
+        for roi in self.roi_manager.rois:
+            if roi.series_path == self.dicom_model.current_series_path and roi.segment == segment:
+                self.dicom_model.set_slice_index(roi.slice_idx)
+                return
     
     def show_detailed_statistics(self):
         """Show a detailed statistics window for all ROIs"""

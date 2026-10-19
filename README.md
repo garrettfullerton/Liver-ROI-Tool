@@ -51,15 +51,29 @@ pip install -r requirements.txt
 ```bash
 python liver-app.py
 ```
-2. Click "Open Folder" to select a directory containing DICOM data (`.dcm` files or extensionless DICOM files)
-3. Navigate the directory tree and select a series to load
+2. Click "Open Folder" to select a directory containing DICOM data (`.dcm` / `.sdcopen` by default; see Advanced Settings)
+3. Navigate the directory tree and select a series to load. Series are listed as `#SeriesNumber Description`, with ROI progress (e.g. `5/9`, `✓ 9/9`)
 4. Adjust window/level using right-click and drag
 5. Draw ROIs by:
 - Toggling "Draw Circular ROI" button
-- Left-clicking and dragging on the image
+- Left-clicking at the ROI center and dragging out to the desired radius
 - Selecting a liver segment
 6. To reuse ROIs on other series, click "Copy / Propagate ROIs...", check the target series (or Select All), and click "Copy ROIs". A summary lists ROIs copied or skipped per series (e.g. different orientation, no slice within the max distance)
 7. Export ROIs for all series at once with "Export ROIs" (Ctrl+S)
+
+## ROI Checklist
+The table under the ROI controls lists every segment of the current scheme for the current series, with its slice and statistics (`—` = not drawn yet, bold = on the current slice). Double-click a row to jump to that slice. Segment buttons show ✓ once drawn. Import/export/copy results appear in the status bar.
+
+## Advanced Settings
+`liver_roi_config.json` is created next to the app on first run:
+```json
+{
+    "dicom_extensions": [".dcm", ".sdcopen"],
+    "scan_all_files": false
+}
+```
+- `dicom_extensions`: file extensions treated as DICOM (case-insensitive)
+- `scan_all_files`: also check every other file for a DICOM header (finds extensionless files; slower on large folders)
 
 ## Keyboard Shortcuts
 - **Ctrl+1 to Ctrl+9**: Select liver segments 1-9
@@ -75,6 +89,7 @@ python liver-app.py
 - dicom_series_model.py: DICOM data management
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
+- app_config.py: Loads advanced settings from liver_roi_config.json
 - schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
 - propagate_dialog.py: Dialog for copying/propagating ROIs between series
 - roi_geometry.py: Shared ROI geometry and statistics (pixel/mm conversion, circular ROI stats)

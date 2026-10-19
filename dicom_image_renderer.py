@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt5.QtCore import QObject, Qt, QRectF, QPointF
+from PyQt5.QtCore import QObject, Qt, QRectF, QPointF, QLineF
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor
 
 from schemes import get_short_label
@@ -141,7 +141,7 @@ class DicomImageRenderer(QObject):
             
             # Calculate center and radius
             center = QPointF(start_pos)
-            radius = (current_pos - start_pos).manhattanLength() / 2
+            radius = QLineF(QPointF(start_pos), QPointF(current_pos)).length()
             
             # Draw preview circle
             painter.setPen(QPen(Qt.yellow, 2, Qt.DashLine))

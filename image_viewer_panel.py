@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QSize, QPointF
+from PyQt5.QtCore import Qt, QSize, QPointF, QLineF
 from PyQt5.QtGui import QPainter
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSlider
@@ -214,8 +214,7 @@ class ImageViewerPanel(QWidget):
             
             if norm_x is not None and norm_y is not None and pixmap_rect.width() > 0:
                 # Convert drag distance from display pixels to image pixels
-                current_pt = QPointF(self.roi_current_pos)
-                distance = (current_pt - QPointF(self.roi_start_pos)).manhattanLength() / 2
+                distance = QLineF(QPointF(self.roi_start_pos), QPointF(self.roi_current_pos)).length()
                 radius_px = distance * self.renderer.dicom_size[1] / pixmap_rect.width()
                 
                 # Add ROI if it's valid

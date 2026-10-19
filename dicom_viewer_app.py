@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog,
-                             QApplication, QAbstractSpinBox, QLineEdit)
+                             QApplication, QAbstractSpinBox, QLineEdit, QMessageBox)
 from PyQt5.QtCore import Qt, QEvent, pyqtSlot
 
 from dicom_image_renderer import DicomImageRenderer
@@ -62,7 +62,7 @@ class DicomViewerApp(QMainWindow):
         
         # Create UI panels
         self.navigator_panel = SeriesNavigatorPanel(
-            self.central_widget, self.dicom_model
+            self.central_widget, self.dicom_model, self.roi_manager
         )
         
         self.image_viewer = ImageViewerPanel(
@@ -96,6 +96,9 @@ class DicomViewerApp(QMainWindow):
         
         # Stats panel can be in control panel or separate
         self.control_panel.layout.addWidget(self.stats_panel)
+
+        # Status bar for import/export/copy results
+        self.statusBar()
     
     def connect_signals(self):
         """Connect signals between components"""
@@ -115,6 +118,13 @@ class DicomViewerApp(QMainWindow):
         self.roi_manager.rois_changed.connect(self.image_viewer.update_display)
         self.roi_manager.rois_changed.connect(self.stats_panel.update_statistics)
         self.roi_manager.scheme_changed.connect(self.control_panel.on_manager_scheme_changed)
+        self.roi_manager.message.connect(self.show_message)
+        self.roi_manager.rois_changed.connect(self.navigator_panel.update_series_status)
+        self.dicom_model.series_loaded.connect(self.navigator_panel.update_series_status)
+        self.roi_manager.rois_changed.connect(self.control_panel.update_segment_status)
+        self.dicom_model.series_loaded.connect(self.control_panel.update_segment_status)
+        self.roi_manager.scheme_changed.connect(self.stats_panel.update_statistics)
+        self.roi_manager.scheme_changed.connect(self.navigator_panel.update_series_status)
         
         # Connect control panel signals
         self.control_panel.window_level_changed.connect(self.renderer.set_window_level)
@@ -152,6 +162,12 @@ class DicomViewerApp(QMainWindow):
         self.control_panel.update_window_level(window, level)
 
         self.image_viewer.update_display()
+
+    def show_message(self, text, is_error=False):
+        """Show a message in the status bar; errors also get a warning dialog"""
+        self.statusBar().showMessage(text, 15000)
+        if is_error:
+            QMessageBox.warning(self, "Liver ROI Tool", text)
 
     @pyqtSlot()
     def show_copy_rois_dialog(self):

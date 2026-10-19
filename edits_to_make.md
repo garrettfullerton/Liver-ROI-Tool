@@ -117,6 +117,7 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 - [x] **B5** Confirmation dialogs for Clear All and for scheme changes when ROIs exist.
 - [x] **B6** Sort slices by position along the slice normal (from ImagePositionPatient), with InstanceNumber as the fallback.
   (No multi-echo/multi-phase splitting needed.)
+- [x] **B7b** Config file `liver_roi_config.json` (`dicom_extensions`, default .dcm/.sdcopen; `scan_all_files`, default off) — done in Phase F.
 - [x] **B7** DICOM detection: accept files without an extension (check the `DICM` preamble). Use the same file
   filter in the folder scan, `load_series`, and the navigator (`.sdcopen` is currently inconsistent).
 - [x] **B9** Patient-coordinate (mm) math in `roi_geometry.normalized_to_patient` assumes a fixed convention that
@@ -133,10 +134,10 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 - [ ] **Q1 Fixed-size ROI mode:** a spinbox for diameter (mm) plus a toggle; click to place, using pixel spacing to convert mm to px.
 - [ ] **Q2 Move/resize ROIs:** hit-test existing ROIs on mouse press; drag the center to move it, drag the edge to resize it;
   recompute stats on release.
-- [ ] **Q3 Better series tree:** label leaf nodes "#SeriesNumber – Description" (from F1), sort by series number,
+- [x] **Q3 Better series tree:** label leaf nodes "#SeriesNumber – Description" (from F1), sort by series number,
   and add an ROI-count badge ("✓ 9/9") that updates on `rois_changed`.
-- [ ] **Q4 Segment checklist:** in the control panel, show which labels have ROIs in the current series; clicking one
-  jumps to that ROI's slice.
+- [x] **Q4 Segment checklist:** the stats table lists every segment for the current series (slice + stats, "—" if missing,
+  bold = on this slice); double-clicking a row jumps to that slice. Segment buttons show ✓ once drawn.
 - [ ] **Q5 Autosave + unsaved warning:** after each change, write a session CSV to a temp/app-data folder; prompt on
   `closeEvent` if there are unexported changes. Use `QSettings` to remember the last folder, scheme, and fixed ROI size.
 - [ ] **Q6 Zoom/pan:** zoom factor and offset in the renderer (Ctrl+wheel to zoom, middle-drag to pan). Coordinate
@@ -144,8 +145,8 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 - [ ] **Q7 Cursor readout:** status bar showing the pixel value (rescaled) and LR/AP/SI mm under the cursor, using
   the existing `renderer.get_pixel_value`.
 - [ ] **Q8 Wide export:** an extra export option with one row per series and columns `<label>_mean`, `<label>_std`, …
-- [ ] **Q9 In-app messages:** replace `print()` with a `QStatusBar` / `QMessageBox` for import, export, and copy results.
-- [ ] **Q10 Euclidean drag radius:** the radius equals the drag distance (currently the Manhattan distance / 2). The preview matches the final ROI.
+- [x] **Q9 In-app messages:** replace `print()` with a `QStatusBar` / `QMessageBox` for import, export, and copy results.
+- [x] **Q10 Euclidean drag radius:** the radius equals the drag distance (currently the Manhattan distance / 2). The preview matches the final ROI.
 
 ---
 

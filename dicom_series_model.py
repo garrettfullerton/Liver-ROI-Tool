@@ -1,17 +1,20 @@
 import os
 import pydicom
 import numpy as np
+from pydicom.errors import InvalidDicomError
 from pydicom.multival import MultiValue
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from roi_geometry import get_orientation, get_pixel_values
+from app_config import CONFIG
 
 def is_dicom_file(path):
-    """True for .dcm files, or any other file with the DICOM 'DICM' preamble (e.g. extensionless exports)"""
+    """True for files with a configured DICOM extension; if scan_all_files is enabled, also for any
+    other file with the DICOM 'DICM' header (e.g. extensionless exports)"""
     name = os.path.basename(path)
-    if name.lower().endswith('.dcm'):
+    if os.path.splitext(name)[1].lower() in CONFIG["dicom_extensions"]:
         return True
-    if name.startswith('.') or name.upper() == 'DICOMDIR':
+    if not CONFIG["scan_all_files"] or name.startswith('.') or name.upper() == 'DICOMDIR':
         return False
     try:
         with open(path, 'rb') as f:
@@ -19,6 +22,14 @@ def is_dicom_file(path):
             return f.read(4) == b'DICM'
     except OSError:
         return False
+
+
+def read_dicom(path, stop_before_pixels=False):
+    """Read a DICOM file, retrying without the standard header check (some exports lack the preamble)"""
+    try:
+        return pydicom.dcmread(path, stop_before_pixels=stop_before_pixels)
+    except InvalidDicomError:
+        return pydicom.dcmread(path, stop_before_pixels=stop_before_pixels, force=True)
 
 
 def list_dicom_files(directory, filenames=None):
@@ -175,7 +186,7 @@ class DicomSeriesModel(QObject):
                 continue
             for dicom_file in list_dicom_files(path):
                 try:
-                    ds = pydicom.dcmread(dicom_file, stop_before_pixels=True)
+                    ds = read_dicom(dicom_file, stop_before_pixels=True)
                     self.series_meta[path] = self._extract_meta(ds)
                     break
                 except Exception as e:
@@ -264,7 +275,7 @@ class DicomSeriesModel(QObject):
         series_data = []
         for dicom_file in dicom_files:
             try:
-                series_data.append(pydicom.dcmread(dicom_file))
+                series_data.append(read_dicom(dicom_file))
             except Exception as e:
                 print(f"Error loading {dicom_file}: {e}")
         
@@ -319,7 +330,7 @@ class DicomSeriesModel(QObject):
         number = meta.get('SeriesNumber')
         return f"#{number} {description}" if number not in (None, "") else description
 
-    def _series_number_key(self, series_path):
+    def series_sort_key(self, series_path):
         """Sort key ordering series by SeriesNumber, then label"""
         number = self.series_meta.get(series_path, {}).get('SeriesNumber')
         try:
@@ -334,7 +345,7 @@ class DicomSeriesModel(QObject):
                  if study_uid and meta.get('StudyInstanceUID') == study_uid]
         if series_path not in paths:
             paths.append(series_path)
-        return sorted(paths, key=self._series_number_key)
+        return sorted(paths, key=self.series_sort_key)
 
     def get_series(self, series_path):
         """Return the (already read) slices of a series"""

@@ -256,6 +256,7 @@ class ControlPanel(QWidget):
 
         for segment, label in enumerate(scheme_def["labels"], start=1):
             btn = QPushButton(scheme_def["button_format"].format(label))
+            btn.setProperty("base_text", btn.text())
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, s=segment: self.on_segment_selected(s))
 
@@ -265,6 +266,14 @@ class ControlPanel(QWidget):
             self.segment_buttons[segment] = btn
             row, col = divmod(segment - 1, scheme_def["columns"])
             self.segment_layout.addWidget(btn, row, col)
+    
+    def update_segment_status(self):
+        """Mark segment buttons whose ROI already exists in the current series"""
+        done = {roi.segment for roi in self.roi_manager.rois
+                if roi.series_path == self.dicom_model.current_series_path}
+        for segment, button in self.segment_buttons.items():
+            base_text = button.property("base_text")
+            button.setText(f"{base_text} ✓" if segment in done else base_text)
     
     def on_segment_selected(self, segment):
         """Handle segment selection"""

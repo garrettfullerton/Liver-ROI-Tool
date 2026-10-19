@@ -106,6 +106,7 @@ class ROIManager(QObject):
     # Define signals
     rois_changed = pyqtSignal()
     scheme_changed = pyqtSignal(str)  # scheme name
+    message = pyqtSignal(str, bool)  # text, is_error (shown in the status bar / a warning dialog)
     
     def __init__(self, dicom_model):
         super().__init__()
@@ -195,6 +196,7 @@ class ROIManager(QObject):
     def export_rois(self, filename=None):
         """Export ROIs to a CSV file"""
         if not self.rois:
+            self.message.emit("No ROIs to export", True)
             return False
             
         if filename is None:
@@ -217,19 +219,21 @@ class ROIManager(QObject):
                 writer.writerow([header for header, _ in EXPORT_COLUMNS])
                 for roi in self.rois:
                     writer.writerow([format_value(getter(roi)) for _, getter in EXPORT_COLUMNS])
+            n_series = len(self.get_series_with_rois())
+            self.message.emit(f"Exported {len(self.rois)} ROIs from {n_series} series to {os.path.basename(filename)}", False)
             return True
         except Exception as e:
-            print(f"Error exporting ROIs: {e}")
+            self.message.emit(f"Error exporting ROIs: {e}", True)
             return False
 
-    @staticmethod
-    def _detect_scheme(rows, current_scheme):
+    def _detect_scheme(self, rows, current_scheme):
         """Pick the scheme for imported rows: 'Scheme' column if present, otherwise infer from labels"""
         schemes = [row["scheme"] for row in rows if row.get("scheme") in SCHEMES]
         if schemes:
             counts = {scheme: schemes.count(scheme) for scheme in set(schemes)}
             if len(counts) > 1:
-                print(f"Warning: file contains ROIs from several schemes {counts}; using the most common")
+                self.message.emit(f"File contains ROIs from several schemes {counts}; "
+                                  f"only {max(counts, key=counts.get)} ROIs can be imported", True)
             return max(counts, key=counts.get)
 
         # Older files: choose a scheme containing every label (prefer the current scheme)
@@ -286,14 +290,14 @@ class ROIManager(QObject):
                 rows = [{(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
                         for row in csv.DictReader(f)]
         except Exception as e:
-            print(f"Error importing ROIs: {e}")
+            self.message.emit(f"Error importing ROIs: {e}", True)
             return False
 
         required_fields = ["segment label", "slice index", "center x", "center y", "series uid"]
         header = rows[0].keys() if rows else []
         missing = [field for field in required_fields if field not in header]
         if not rows or missing or not ({"radius", "radius (px)"} & set(header)):
-            print(f"Error: CSV is empty or missing required columns {missing or ['radius']}")
+            self.message.emit(f"Cannot import: CSV is empty or missing required columns {missing or ['radius']}", True)
             return False
 
         scheme = self._detect_scheme(rows, self.segmentation_scheme)
@@ -305,7 +309,6 @@ class ROIManager(QObject):
 
         # Switch to the scheme the ROIs were drawn with (this also clears existing ROIs)
         if scheme != self.segmentation_scheme:
-            print(f"Switching segmentation scheme to {scheme} to match imported ROIs")
             self.set_segmentation_scheme(scheme)
         elif mode == "replace":
             self.clear_all_rois()
@@ -350,12 +353,13 @@ class ROIManager(QObject):
                 imported += 1
                 imported_series.add(series_path)
                                        
-            except (ValueError, IndexError) as e:
-                print(f"Error parsing ROI row {i+1}: {e}")
+            except (ValueError, IndexError):
                 skip("unreadable row")
 
-        print(f"Imported {imported} ROIs into {len(imported_series)} series"
-              + (f"; skipped {skipped}" if skipped else ""))
+        summary = f"Imported {imported} ROIs into {len(imported_series)} series"
+        if skipped:
+            summary += "; skipped " + ", ".join(f"{n} ({reason})" for reason, n in skipped.items())
+        self.message.emit(summary, imported == 0)
 
         # Notify of changes
         self.rois_changed.emit()
