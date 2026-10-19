@@ -26,7 +26,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - Segmentation Schemes: 9-segment (Couinaud), 4-segment, left/right lobe, or a single whole-liver ROI
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI, using rescaled pixel values (RescaleSlope/Intercept)
 - Export Capabilities: Export ROIs and statistics to CSV files, including std, ROI scheme, and series/acquisition info (series number/date/time, scanner, TR/TE/flip angle, slice thickness, etc.)
-- Import: Load ROIs from any exported CSV (including older versions); the segmentation scheme switches automatically to match
+- Import: Load ROIs from any exported CSV (including older versions) into every matching series in the opened folder (matched by Series UID), replacing or merging with existing ROIs; the segmentation scheme switches automatically to match
 - ROI Copy / Propagate: Copy ROIs from the current series to all or selected series in the same exam, or into the current series from another series, matched by anatomical position (axial, coronal, sagittal, or oblique)
 
 ## Requirements
@@ -51,7 +51,7 @@ pip install -r requirements.txt
 ```bash
 python liver-app.py
 ```
-2. Click "Open Folder" to select a directory containing DICOM data
+2. Click "Open Folder" to select a directory containing DICOM data (`.dcm` files or extensionless DICOM files)
 3. Navigate the directory tree and select a series to load
 4. Adjust window/level using right-click and drag
 5. Draw ROIs by:
@@ -65,6 +65,9 @@ python liver-app.py
 - **Ctrl+1 to Ctrl+9**: Select liver segments 1-9
 - **Left/Right Arrow or Up/Down Arrow**: Navigate through slices (works from any panel except while typing in a number field)
 - **Mouse Wheel / Touchpad**: Scroll through slices
+- **Ctrl+Z**: Clear the last ROI drawn on the current slice
+- **Ctrl+S**: Export ROIs
+- **E**: Toggle ROI drawing
 
 ## Project Structure
 - liver-app.py: Main application entry point

@@ -109,22 +109,22 @@ B9 approved and done (Phase C commit): coronal/sagittal/oblique mm coordinates n
 
 ## Phase E — Bug fixes
 
-- [ ] **B2** `delete_last_roi` filters by slice only; also filter by `series_path` (currently it can delete an ROI from another series).
+- [x] **B2** `delete_last_roi` filters by slice only; also filter by `series_path` (currently it can delete an ROI from another series).
   Track insertion order so that "last" means the last ROI drawn. Add Ctrl+Z.
-- [ ] **B3** Import keeps all rows (matched to series by UID, using the F1 scan), not just the current series,
+- [x] **B3** Import keeps all rows (matched to series by UID, using the F1 scan), not just the current series,
   and asks "Replace or merge?" instead of always clearing.
 - [x] **B4** Apply RescaleSlope/Intercept in `compute_roi_stats` (done in Phase B). Philips private scale not handled.
-- [ ] **B5** Confirmation dialogs for Clear All and for scheme changes when ROIs exist.
-- [ ] **B6** Sort slices by position along the slice normal (from ImagePositionPatient), with InstanceNumber as the fallback.
+- [x] **B5** Confirmation dialogs for Clear All and for scheme changes when ROIs exist.
+- [x] **B6** Sort slices by position along the slice normal (from ImagePositionPatient), with InstanceNumber as the fallback.
   (No multi-echo/multi-phase splitting needed.)
-- [ ] **B7** DICOM detection: accept files without an extension (check the `DICM` preamble). Use the same file
+- [x] **B7** DICOM detection: accept files without an extension (check the `DICM` preamble). Use the same file
   filter in the folder scan, `load_series`, and the navigator (`.sdcopen` is currently inconsistent).
 - [x] **B9** Patient-coordinate (mm) math in `roi_geometry.normalized_to_patient` assumes a fixed convention that
   is only correct for standard axial slices. Coronal SI is offset by the FOV height. Sagittal swaps the AP/SI axes.
   Copying stays self-consistent within one series geometry, but copying between coronal/sagittal series with
   different FOV/position will misplace ROIs. Fix: compute positions from the ImageOrientationPatient direction cosines
   (P = IPP + col·Δc·row_cos + row·Δr·col_cos), and use the inverse for copying. Do this before Phase D.
-- [ ] **B8** Window/level ranges: set the slider/spinbox ranges from the series' min/max instead of 4000/±2000.
+- [x] **B8** Window/level ranges: set the slider/spinbox ranges from the series' min/max instead of 4000/±2000.
 
 ---
 

@@ -1,4 +1,3 @@
-import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget, 
                            QTreeWidgetItem, QFileDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -82,15 +81,9 @@ class SeriesNavigatorPanel(QWidget):
         """Handle series selection in the tree"""
         # Get the series path from the tree item
         series_path = item.data(0, Qt.UserRole)
-        if not series_path:
-            return
         
-        # Check if this item has DICOM files directly
-        dicom_files = [f for f in os.listdir(series_path) 
-                    if f.endswith('.dcm') or f.endswith('.DCM')]
-        
-        if dicom_files:
-            # Emit signal with selected series path
+        # Only leaf items (folders containing DICOM files) carry a path
+        if series_path:
             self.series_selected.emit(series_path)
     
     def on_copy_rois_requested(self):

@@ -1,9 +1,55 @@
 import os
 import pydicom
+import numpy as np
 from pydicom.multival import MultiValue
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from roi_geometry import get_orientation, get_pixel_values
+
+def is_dicom_file(path):
+    """True for .dcm files, or any other file with the DICOM 'DICM' preamble (e.g. extensionless exports)"""
+    name = os.path.basename(path)
+    if name.lower().endswith('.dcm'):
+        return True
+    if name.startswith('.') or name.upper() == 'DICOMDIR':
+        return False
+    try:
+        with open(path, 'rb') as f:
+            f.seek(128)
+            return f.read(4) == b'DICM'
+    except OSError:
+        return False
+
+
+def list_dicom_files(directory, filenames=None):
+    """Full paths of DICOM files directly inside a directory"""
+    if filenames is None:
+        filenames = os.listdir(directory)
+    return [os.path.join(directory, f) for f in sorted(filenames) if is_dicom_file(os.path.join(directory, f))]
+
+
+def sort_slices(series_data):
+    """Order slices by position along the slice normal, in the same direction as InstanceNumber.
+
+    Falls back to InstanceNumber when any slice lacks position/orientation information.
+    """
+    instance_numbers = [int(getattr(ds, 'InstanceNumber', 0) or 0) for ds in series_data]
+    try:
+        iop = np.array([float(v) for v in series_data[0].ImageOrientationPatient])
+        normal = np.cross(iop[:3], iop[3:])
+        positions = [float(np.dot([float(v) for v in ds.ImagePositionPatient], normal)) for ds in series_data]
+    except (AttributeError, ValueError, TypeError):
+        return [ds for _, ds in sorted(zip(instance_numbers, series_data), key=lambda pair: pair[0])]
+
+    order = sorted(range(len(series_data)), key=lambda i: (positions[i], instance_numbers[i]))
+    # Keep the conventional direction: reverse if instance numbers decrease along the normal
+    sorted_positions = [positions[i] for i in order]
+    sorted_instances = [instance_numbers[i] for i in order]
+    if (np.std(sorted_positions) > 0 and np.std(sorted_instances) > 0
+            and np.corrcoef(sorted_positions, sorted_instances)[0, 1] < 0):
+        order.reverse()
+    return [series_data[i] for i in order]
+
 
 class DicomSeriesModel(QObject):
     """Model class for loading and managing DICOM data"""
@@ -18,6 +64,7 @@ class DicomSeriesModel(QObject):
         self.current_slice_index = 0
         self.series_data = {}  # Dictionary of loaded series
         self.series_meta = {}  # Series-level info keyed by path (filled by header scan, then on load)
+        self.value_ranges = {}  # (min, max) rescaled pixel values keyed by path
         self.anatomical_positions = {}  # Mapping of anatomical positions
         self.directory_structure = {}  
         self.current_series_path = None
@@ -52,7 +99,7 @@ class DicomSeriesModel(QObject):
         
         for root, dirs, files in os.walk(root_dir):
             # Check if directory contains DICOM files
-            dicom_files = [f for f in files if f.endswith('.dcm') or f.endswith('.DCM') or f.endswith('.sdcopen')]
+            dicom_files = list_dicom_files(root, files)
             
             if dicom_files:
                 # This directory contains DICOM files
@@ -126,18 +173,13 @@ class DicomSeriesModel(QObject):
             path = dir_info['path']
             if path in self.series_meta:
                 continue
-            for f in sorted(os.listdir(path)):
-                if self._is_dicom_filename(f):
-                    try:
-                        ds = pydicom.dcmread(os.path.join(path, f), stop_before_pixels=True)
-                        self.series_meta[path] = self._extract_meta(ds)
-                        break
-                    except Exception as e:
-                        print(f"Error reading header {f}: {e}")
-
-    @staticmethod
-    def _is_dicom_filename(filename):
-        return filename.endswith('.dcm') or filename.endswith('.DCM')
+            for dicom_file in list_dicom_files(path):
+                try:
+                    ds = pydicom.dcmread(dicom_file, stop_before_pixels=True)
+                    self.series_meta[path] = self._extract_meta(ds)
+                    break
+                except Exception as e:
+                    print(f"Error reading header {dicom_file}: {e}")
 
     @staticmethod
     def _tag(ds, name, default=""):
@@ -217,8 +259,7 @@ class DicomSeriesModel(QObject):
             return None
             
         # Load all DICOM files in the series
-        dicom_files = [os.path.join(series_path, f) for f in os.listdir(series_path) 
-                      if self._is_dicom_filename(f)]
+        dicom_files = list_dicom_files(series_path)
         
         series_data = []
         for dicom_file in dicom_files:
@@ -230,8 +271,8 @@ class DicomSeriesModel(QObject):
         if not series_data:
             return None
 
-        # Sort by instance number if available
-        series_data.sort(key=lambda x: getattr(x, 'InstanceNumber', 0))
+        # Sort by slice position (consistent with instance number order)
+        series_data = sort_slices(series_data)
             
         # Store the series data
         self.series_data[series_path] = series_data
@@ -261,8 +302,10 @@ class DicomSeriesModel(QObject):
             self.default_level = meta['WindowCenter']
             self.default_window = meta['WindowWidth']
         else:
-            self.default_level = 0
-            self.default_window = 2000
+            # No window tags: show the full range of the data
+            value_min, value_max = self.get_value_range(series_path)
+            self.default_level = (value_min + value_max) / 2
+            self.default_window = max(1, value_max - value_min)
         
         # Emit signal that series has been loaded
         self.series_loaded.emit()
@@ -296,6 +339,18 @@ class DicomSeriesModel(QObject):
     def get_series(self, series_path):
         """Return the (already read) slices of a series"""
         return self.series_data.get(series_path, [])
+
+    def get_value_range(self, series_path=None):
+        """(min, max) of rescaled pixel values over a series (cached)"""
+        if series_path is None:
+            series_path = self.current_series_path
+        if series_path not in self.value_ranges:
+            values = [get_pixel_values(ds) for ds in self.series_data.get(series_path, [])]
+            if not values:
+                return (0, 0)
+            self.value_ranges[series_path] = (float(min(v.min() for v in values)),
+                                              float(max(v.max() for v in values)))
+        return self.value_ranges[series_path]
 
     def get_series_meta(self, series_path=None):
         """Return series-level information (defaults to current series)"""

@@ -175,11 +175,11 @@ class ImageViewerPanel(QWidget):
             level = self.renderer.level
             
             # Update window/level based on mouse movement
-            window += dx * 3
-            window = max(1, min(4000, window))
+            window += dx * self.renderer.drag_step
+            window = int(max(1, min(self.renderer.window_max, window)))
             
-            level -= dy * 3
-            level = max(-2000, min(2000, level))
+            level -= dy * self.renderer.drag_step
+            level = int(max(self.renderer.level_min, min(self.renderer.level_max, level)))
             
             # Update renderer
             self.renderer.set_window_level(window, level)

@@ -139,6 +139,15 @@ class DicomViewerApp(QMainWindow):
         window = int(round(self.dicom_model.default_window))
         level = int(round(self.dicom_model.default_level))
 
+        # Size window/level ranges to the data (at least the previous fixed 4000 / +-2000)
+        value_min, value_max = self.dicom_model.get_value_range()
+        span = max(value_max - value_min, 1)
+        window_max = int(max(4000, 2 * span, window))
+        level_min = int(min(-2000, value_min - span, level))
+        level_max = int(max(2000, value_max + span, level))
+        self.renderer.set_window_level_limits(window_max, level_min, level_max, max(3, span / 300))
+        self.control_panel.set_window_level_limits(window_max, level_min, level_max)
+
         self.renderer.set_window_level(window, level)
         self.control_panel.update_window_level(window, level)
 

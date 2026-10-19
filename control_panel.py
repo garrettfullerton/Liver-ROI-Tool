@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                             QGroupBox, QLabel, QSlider, QSpinBox, QRadioButton,
-                            QButtonGroup, QPushButton)
+                            QButtonGroup, QPushButton, QMessageBox)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 
@@ -110,6 +110,7 @@ class ControlPanel(QWidget):
         
         self.clear_last_roi_button = QPushButton("Clear Last ROI")
         self.clear_last_roi_button.clicked.connect(self.on_clear_last_roi)
+        self.clear_last_roi_button.setShortcut(QKeySequence("Ctrl+z"))
         
         self.clear_all_rois_button = QPushButton("Clear All ROIs")
         self.clear_all_rois_button.clicked.connect(self.on_clear_all_rois)
@@ -136,6 +137,17 @@ class ControlPanel(QWidget):
 
     def on_import_rois(self):
         self.import_rois_requested.emit()
+
+    def set_window_level_limits(self, window_max, level_min, level_max):
+        """Set slider/input ranges for window and level"""
+        for widget in (self.window_slider, self.window_input):
+            widget.blockSignals(True)
+            widget.setRange(1, window_max)
+            widget.blockSignals(False)
+        for widget in (self.level_slider, self.level_input):
+            widget.blockSignals(True)
+            widget.setRange(level_min, level_max)
+            widget.blockSignals(False)
 
     def update_window_level(self, window, level):
         """Update window/level controls when changed from outside"""
@@ -206,6 +218,17 @@ class ControlPanel(QWidget):
     def on_scheme_changed(self, button):
         """Handle segmentation scheme change"""
         scheme = list(SCHEMES)[self.scheme_buttons.id(button)]
+        if scheme == self.roi_manager.segmentation_scheme:
+            return
+
+        # Changing scheme clears all ROIs; confirm first
+        n_rois = len(self.roi_manager.rois)
+        if n_rois and QMessageBox.question(
+                self, "Change Segmentation Scheme",
+                f"Changing the scheme will delete all {n_rois} ROIs in all series. Continue?") != QMessageBox.Yes:
+            # Restore the radio button of the current scheme
+            self.scheme_buttons.button(list(SCHEMES).index(self.roi_manager.segmentation_scheme)).setChecked(True)
+            return
 
         # Segment buttons are rebuilt by on_manager_scheme_changed
         self.roi_manager.set_segmentation_scheme(scheme)
@@ -277,6 +300,11 @@ class ControlPanel(QWidget):
     
     def on_clear_all_rois(self):
         """Handle clear all ROIs button"""
+        n_rois = len(self.roi_manager.rois)
+        if n_rois and QMessageBox.question(
+                self, "Clear All ROIs", f"Delete all {n_rois} ROIs in all series?") != QMessageBox.Yes:
+            return
+        
         # Emit signal to clear all ROIs
         self.clear_all_rois_requested.emit()
     

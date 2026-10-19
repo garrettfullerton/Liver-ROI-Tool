@@ -3,7 +3,7 @@ import numpy as np
 import csv
 from dataclasses import dataclass, field
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
 from schemes import SCHEMES, DEFAULT_SCHEME
 from roi_geometry import (compute_roi_stats, patient_to_normalized, get_pixel_spacing,
@@ -155,29 +155,16 @@ class ROIManager(QObject):
         return False
     
     def delete_last_roi(self):
-        """Remove the last drawn ROI on the current slice"""
-        current_slice = self.dicom_model.current_slice_index
-        
-        # Find ROIs for the current slice
-        current_slice_rois = [(i, roi) for i, roi in enumerate(self.rois) 
-                             if roi.slice_idx == current_slice]
+        """Remove the most recently added ROI on the current slice of the current series"""
+        current_slice_rois = [i for i, roi in enumerate(self.rois)
+                              if roi.slice_idx == self.dicom_model.current_slice_index
+                              and roi.series_path == self.dicom_model.current_series_path]
         
         if current_slice_rois:
-            # Remove the last ROI for the current slice
-            idx, _ = current_slice_rois[-1]
-            return self.delete_roi(idx)
+            # ROIs are kept in the order they were added
+            return self.delete_roi(current_slice_rois[-1])
         
         return False
-    
-    def clear_slice_rois(self, slice_idx):
-        """Clear all ROIs for a specific slice"""
-        to_delete = [i for i, roi in enumerate(self.rois) if roi.slice_idx == slice_idx]
-        
-        # Delete from last to first to avoid index issues
-        for idx in sorted(to_delete, reverse=True):
-            self.delete_roi(idx)
-        
-        return len(to_delete) > 0
     
     def clear_all_rois(self):
         """Clear all ROIs"""
@@ -253,8 +240,37 @@ class ROIManager(QObject):
                 return scheme
         return current_scheme
         
-    def import_rois(self, filename=None):
-        """Import ROIs from a CSV file (exported by any version of this tool)"""
+    def _ask_import_mode(self, scheme):
+        """Ask whether imported ROIs replace or merge with existing ones; returns 'replace', 'merge' or None"""
+        if not self.rois:
+            return "replace"
+
+        if scheme != self.segmentation_scheme:
+            answer = QMessageBox.question(
+                None, "Import ROIs",
+                f"The file uses the {SCHEMES[scheme]['display_name']} scheme. Importing will switch to it "
+                f"and clear the {len(self.rois)} current ROIs. Continue?")
+            return "replace" if answer == QMessageBox.Yes else None
+
+        box = QMessageBox(QMessageBox.Question, "Import ROIs",
+                          f"There are {len(self.rois)} ROIs already loaded.\n\n"
+                          "Replace: clear them and load the file.\n"
+                          "Merge: keep them; imported ROIs replace the same segment in the same series.")
+        replace_button = box.addButton("Replace", QMessageBox.DestructiveRole)
+        merge_button = box.addButton("Merge", QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.exec_()
+        if box.clickedButton() == replace_button:
+            return "replace"
+        if box.clickedButton() == merge_button:
+            return "merge"
+        return None
+        
+    def import_rois(self, filename=None, mode=None):
+        """Import ROIs from a CSV file (exported by any version of this tool) into all matching series.
+
+        mode: 'replace' or 'merge' existing ROIs; None asks the user when ROIs already exist.
+        """
         if filename is None:
             # Show file dialog
             filename, _ = QFileDialog.getOpenFileName(
@@ -280,31 +296,42 @@ class ROIManager(QObject):
             print(f"Error: CSV is empty or missing required columns {missing or ['radius']}")
             return False
 
-        # Switch to the scheme the ROIs were drawn with (this also clears existing ROIs)
         scheme = self._detect_scheme(rows, self.segmentation_scheme)
+
+        if mode is None:
+            mode = self._ask_import_mode(scheme)
+            if mode is None:
+                return False
+
+        # Switch to the scheme the ROIs were drawn with (this also clears existing ROIs)
         if scheme != self.segmentation_scheme:
             print(f"Switching segmentation scheme to {scheme} to match imported ROIs")
             self.set_segmentation_scheme(scheme)
-        else:
+        elif mode == "replace":
             self.clear_all_rois()
-        
-        series_path = self.dicom_model.current_series_path
+
+        # Match rows to series in the opened folder by Series Instance UID
+        uid_to_path = {meta.get('SeriesInstanceUID'): path
+                       for path, meta in self.dicom_model.series_meta.items()}
+        imported, imported_series, skipped = 0, set(), {}
+        skip = lambda reason: skipped.__setitem__(reason, skipped.get(reason, 0) + 1)
         
         # Rebuild ROIs; statistics are recomputed from the image
         for i, row in enumerate(rows):
             try:
-                if row["series uid"] != self.dicom_model.current_series_uid:
-                    print(f"skipping row {i+1} because series path does not match current series")
+                series_path = uid_to_path.get(row["series uid"])
+                if series_path is None or not self.dicom_model.read_series(series_path):
+                    skip("series not in opened folder")
                     continue
                 
                 if row["segment label"] not in self.segment_labels:
-                    print(f"can't find correct segment labels for row {i+1}. maybe change segmentation scheme?")
+                    skip("label not in scheme")
                     continue
 
                 slice_idx = int(row["slice index"])-1
                 slice_data = self.dicom_model.get_slice(slice_idx, series_path)
                 if slice_data is None:
-                    print(f"skipping row {i+1}: slice {slice_idx+1} not in current series")
+                    skip("slice not in series")
                     continue
 
                 if row.get("radius (px)"):
@@ -316,12 +343,19 @@ class ROIManager(QObject):
 
                 roi = self.create_roi(series_path, slice_idx, segment,
                                       float(row["center x"]), float(row["center y"]), radius_px)
-                if roi is not None:
-                    self.add_roi(roi)
+                if roi is None:
+                    skip("outside image")
+                    continue
+                self.add_roi(roi)
+                imported += 1
+                imported_series.add(series_path)
                                        
             except (ValueError, IndexError) as e:
                 print(f"Error parsing ROI row {i+1}: {e}")
-                # Continue with next row
+                skip("unreadable row")
+
+        print(f"Imported {imported} ROIs into {len(imported_series)} series"
+              + (f"; skipped {skipped}" if skipped else ""))
 
         # Notify of changes
         self.rois_changed.emit()

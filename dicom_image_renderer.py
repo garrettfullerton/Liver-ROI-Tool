@@ -16,6 +16,18 @@ class DicomImageRenderer(QObject):
         self.pixel_array = None
         self.pixmap = None
         self.dicom_size = (0, 0)  # Original DICOM image size
+        # Window/level limits and mouse-drag sensitivity (updated per series)
+        self.window_max = 4000
+        self.level_min = -2000
+        self.level_max = 2000
+        self.drag_step = 3
+    
+    def set_window_level_limits(self, window_max, level_min, level_max, drag_step):
+        """Set allowed window/level ranges and right-drag step size"""
+        self.window_max = window_max
+        self.level_min = level_min
+        self.level_max = level_max
+        self.drag_step = drag_step
     
     def set_image_data(self, pixel_array):
         """Set the image data to render"""
