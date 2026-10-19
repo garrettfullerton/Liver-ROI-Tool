@@ -89,6 +89,15 @@ def compute_roi_stats(ds, pixel_values, norm_x, norm_y, radius_px):
     spacing_x, _ = get_pixel_spacing(ds)
     (pos_LR, pos_AP, pos_SI), orientation = normalized_to_patient(ds, norm_x, norm_y)
 
+    # Inner half-radius vs outer ring: a large difference suggests an edge, vessel or artifact in the ROI
+    inner = (x_indices - center_x_px)**2 + (y_indices - center_y_px)**2 <= (radius_px / 2)**2
+    inner_values, outer_values = pixel_values[mask & inner], pixel_values[mask & ~inner]
+    median = float(np.median(roi_values))
+    if inner_values.size >= 5 and outer_values.size >= 5 and median != 0:
+        edge_diff = abs(float(np.mean(inner_values)) - float(np.mean(outer_values))) / abs(median)
+    else:
+        edge_diff = float('nan')
+
     return {
         'center_LR_mm': pos_LR,
         'center_AP_mm': pos_AP,
@@ -96,9 +105,10 @@ def compute_roi_stats(ds, pixel_values, norm_x, norm_y, radius_px):
         'orientation': orientation,
         'area_mm2': np.pi * (radius_px * spacing_x) ** 2,  # Assuming square pixels
         'mean_val': float(np.mean(roi_values)),
-        'median_val': float(np.median(roi_values)),
+        'median_val': median,
         'min_val': float(np.min(roi_values)),
         'max_val': float(np.max(roi_values)),
         'std_val': float(np.std(roi_values, ddof=1)) if roi_values.size > 1 else 0.0,
         'size_px': int(roi_values.size),
+        'edge_diff': edge_diff,
     }

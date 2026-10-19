@@ -2,11 +2,12 @@ import math
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                             QGroupBox, QLabel, QSlider, QSpinBox, QRadioButton,
                             QButtonGroup, QPushButton, QMessageBox, QCheckBox,
-                            QDoubleSpinBox)
+                            QDoubleSpinBox, QLineEdit, QFileDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 
-from schemes import SCHEMES, DEFAULT_SCHEME
+from schemes import SCHEMES, DEFAULT_SCHEME, button_text, load_custom_schemes
+from custom_layout_dialog import CustomLayoutDialog
 from app_config import get_settings
 
 class ControlPanel(QWidget):
@@ -22,6 +23,7 @@ class ControlPanel(QWidget):
     show_stats_requested = pyqtSignal()
     export_summary_requested = pyqtSignal()
     fixed_size_changed = pyqtSignal(float)  # ROI diameter in mm (0 = draw by dragging)
+    auto_export_changed = pyqtSignal(str)  # auto-export folder ('' = off)
     
     def __init__(self, parent, dicom_model, roi_manager, renderer):
         super().__init__(parent)
@@ -76,14 +78,17 @@ class ControlPanel(QWidget):
         self.scheme_group = QGroupBox("Segmentation Scheme")
         self.scheme_layout = QVBoxLayout()
         self.scheme_buttons = QButtonGroup()
-
-        # One radio button per scheme; button id is the scheme's index in SCHEMES
-        for scheme_id, (scheme, scheme_def) in enumerate(SCHEMES.items()):
-            radio = QRadioButton(scheme_def["display_name"])
-            radio.setChecked(scheme == DEFAULT_SCHEME)
-            self.scheme_buttons.addButton(radio, scheme_id)
-            self.scheme_layout.addWidget(radio)
         self.scheme_buttons.buttonClicked.connect(self.on_scheme_changed)
+        self.scheme_radio_layout = QVBoxLayout()
+        self.scheme_layout.addLayout(self.scheme_radio_layout)
+
+        load_custom_schemes()
+        self.rebuild_scheme_radios(DEFAULT_SCHEME)
+
+        self.custom_layout_button = QPushButton("Custom Layout...")
+        self.custom_layout_button.setToolTip("Create, edit or delete a layout with any number of numbered/named ROIs")
+        self.custom_layout_button.clicked.connect(self.on_custom_layout)
+        self.scheme_layout.addWidget(self.custom_layout_button)
 
         self.scheme_group.setLayout(self.scheme_layout)
         self.layout.addWidget(self.scheme_group)
@@ -131,6 +136,32 @@ class ControlPanel(QWidget):
         self.export_summary_button = QPushButton("Export Summary (1 row/series)")
         self.export_summary_button.clicked.connect(self.export_summary_requested.emit)
 
+        # Reader initials recorded with each ROI
+        self.reader_input = QLineEdit(get_settings().value("reader", ""))
+        self.reader_input.setPlaceholderText("initials")
+        self.reader_input.setMaximumWidth(120)
+        self.reader_input.textChanged.connect(self.on_reader_changed)
+        self.reader_layout = QHBoxLayout()
+        self.reader_layout.addWidget(QLabel("Reader:"))
+        self.reader_layout.addWidget(self.reader_input)
+        self.reader_layout.addStretch()
+
+        # Automatic per-exam export to a folder
+        self.auto_export_checkbox = QCheckBox("Auto-export to folder")
+        self.auto_export_checkbox.setToolTip("Write each exam's ROIs to <Patient>_<Exam>_<scheme>_ROIs.csv "
+                                             "a few seconds after every change")
+        self.auto_export_dir_button = QPushButton("Choose...")
+        self.auto_export_dir_button.clicked.connect(self.choose_auto_export_dir)
+        self.auto_export_dir = get_settings().value("auto_export_dir", "")
+        self.auto_export_checkbox.setChecked(get_settings().value("auto_export_enabled", False, type=bool)
+                                             and bool(self.auto_export_dir))
+        self.auto_export_checkbox.toggled.connect(self.on_auto_export_toggled)
+        self.auto_export_layout = QHBoxLayout()
+        self.auto_export_layout.addWidget(self.auto_export_checkbox)
+        self.auto_export_layout.addWidget(self.auto_export_dir_button)
+        self.auto_export_label = QLabel()
+        self.auto_export_label.setWordWrap(True)
+
         # Fixed-size ROIs: click to place a circle of the given diameter
         settings = get_settings()
         self.fixed_size_checkbox = QCheckBox("Fixed size")
@@ -160,6 +191,9 @@ class ControlPanel(QWidget):
         self.roi_layout.addWidget(self.export_rois_button)
         self.roi_layout.addWidget(self.show_stats_button)
         self.roi_layout.addWidget(self.export_summary_button)
+        self.roi_layout.addLayout(self.auto_export_layout)
+        self.roi_layout.addWidget(self.auto_export_label)
+        self.roi_layout.addLayout(self.reader_layout)
         
         self.roi_group.setLayout(self.roi_layout)
         self.layout.addWidget(self.roi_group)
@@ -176,6 +210,35 @@ class ControlPanel(QWidget):
         settings.setValue("fixed_diameter_mm", diameter)
         settings.setValue("fixed_size_enabled", enabled)
         self.fixed_size_changed.emit(diameter if enabled else 0.0)
+
+    def on_reader_changed(self, text):
+        """Remember reader initials and record them with new ROIs"""
+        self.roi_manager.reader = text.strip()
+        get_settings().setValue("reader", text.strip())
+
+    def choose_auto_export_dir(self):
+        """Pick the auto-export folder (enables auto-export)"""
+        directory = QFileDialog.getExistingDirectory(self, "Auto-export Folder", self.auto_export_dir)
+        if directory:
+            self.auto_export_dir = directory
+            get_settings().setValue("auto_export_dir", directory)
+            if self.auto_export_checkbox.isChecked():
+                self.on_auto_export_toggled(True)
+            else:
+                self.auto_export_checkbox.setChecked(True)
+
+    def on_auto_export_toggled(self, enabled=None):
+        """Emit the auto-export folder ('' when disabled) and remember the setting"""
+        if enabled is None:
+            enabled = self.auto_export_checkbox.isChecked()
+        if enabled and not self.auto_export_dir:
+            self.choose_auto_export_dir()
+            if not self.auto_export_dir:
+                self.auto_export_checkbox.setChecked(False)
+            return
+        get_settings().setValue("auto_export_enabled", enabled)
+        self.auto_export_label.setText(f"→ {self.auto_export_dir}" if enabled else "")
+        self.auto_export_changed.emit(self.auto_export_dir if enabled else "")
 
     def on_import_rois(self):
         self.import_rois_requested.emit()
@@ -280,12 +343,39 @@ class ControlPanel(QWidget):
 
     def on_manager_scheme_changed(self, scheme):
         """Sync scheme radio buttons and segment buttons when the scheme changes (e.g. on ROI import)"""
-        self.scheme_buttons.button(list(SCHEMES).index(scheme)).setChecked(True)
+        radio = self.scheme_buttons.button(list(SCHEMES).index(scheme))
+        if radio is None or radio.text() != SCHEMES[scheme]["display_name"]:
+            # Scheme list changed (custom layout added/removed)
+            self.rebuild_scheme_radios(scheme)
+        else:
+            radio.setChecked(True)
         self.build_segment_buttons(scheme)
 
         # Keep a valid segment selected while drawing
         if self.draw_roi_button.isChecked():
             self.on_segment_selected(1)
+
+    def rebuild_scheme_radios(self, checked_scheme=None):
+        """(Re)create one radio button per scheme; button id is the scheme's index in SCHEMES"""
+        for radio in self.scheme_buttons.buttons():
+            self.scheme_buttons.removeButton(radio)
+            self.scheme_radio_layout.removeWidget(radio)
+            radio.deleteLater()
+
+        checked_scheme = checked_scheme or self.roi_manager.segmentation_scheme
+        for scheme_id, (scheme, scheme_def) in enumerate(SCHEMES.items()):
+            radio = QRadioButton(scheme_def["display_name"])
+            radio.setChecked(scheme == checked_scheme)
+            self.scheme_buttons.addButton(radio, scheme_id)
+            self.scheme_radio_layout.addWidget(radio)
+
+    def on_custom_layout(self):
+        """Open the custom layout editor"""
+        CustomLayoutDialog(self, self.roi_manager).exec_()
+        self.rebuild_scheme_radios()
+        # Labels of the active custom layout may have been renamed
+        self.build_segment_buttons(self.roi_manager.segmentation_scheme)
+        self.update_segment_status()
 
     def build_segment_buttons(self, scheme):
         """Replace the segment buttons with those for the given scheme"""
@@ -299,14 +389,15 @@ class ControlPanel(QWidget):
         self.segment_buttons = {}
         scheme_def = SCHEMES[scheme]
 
-        for segment, label in enumerate(scheme_def["labels"], start=1):
-            btn = QPushButton(scheme_def["button_format"].format(label))
+        for segment in range(1, len(scheme_def["labels"]) + 1):
+            btn = QPushButton(button_text(scheme, segment))
             btn.setProperty("base_text", btn.text())
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, s=segment: self.on_segment_selected(s))
 
             # Create shortcut using the number key (1-9)
-            btn.setShortcut(QKeySequence(f"Ctrl+{segment}"))
+            if segment <= 9:
+                btn.setShortcut(QKeySequence(f"Ctrl+{segment}"))
 
             self.segment_buttons[segment] = btn
             row, col = divmod(segment - 1, scheme_def["columns"])
@@ -356,7 +447,8 @@ class ControlPanel(QWidget):
         """Handle clear all ROIs button"""
         n_rois = len(self.roi_manager.rois)
         if n_rois and QMessageBox.question(
-                self, "Clear All ROIs", f"Delete all {n_rois} ROIs in all series?") != QMessageBox.Yes:
+                self, "Clear All ROIs",
+                f"Delete all {n_rois} ROIs in all series (including locked series)?") != QMessageBox.Yes:
             return
         
         # Emit signal to clear all ROIs

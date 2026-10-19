@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetIte
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence, QColor
 
-from roi_manager import EXPORT_COLUMNS, format_value
+from roi_manager import EXPORT_COLUMNS
 
 class StatisticsPanel(QWidget):
     """UI panel for displaying and exporting ROI statistics"""
@@ -17,8 +17,8 @@ class StatisticsPanel(QWidget):
         self.layout = QVBoxLayout(self)
         
         # Per-series ROI checklist: one row per segment of the scheme; double-click jumps to the ROI's slice
-        self.stats_table = QTableWidget(0, 7)  # Rows will be added dynamically
-        self.stats_table.setHorizontalHeaderLabels(["Segment", "Slice", "Mean", "Median", "Std", "Min", "Max"])
+        self.stats_table = QTableWidget(0, 9)  # Rows will be added dynamically
+        self.stats_table.setHorizontalHeaderLabels(["Segment", "Slice", "Mean", "Median", "Std", "CV", "Min", "Max", "⚠"])
         self.stats_table.horizontalHeader().setStretchLastSection(True)
         self.stats_table.verticalHeader().setVisible(False)
         self.stats_table.setToolTip("ROIs in the current series (bold = on this slice). Double-click to go to the slice.")
@@ -45,10 +45,12 @@ class StatisticsPanel(QWidget):
         for segment, label in enumerate(self.roi_manager.segment_labels, start=1):
             roi = series_rois.get(segment)
             if roi is None:
-                values = [label, "—", "", "", "", "", ""]
+                values = [label, "—", "", "", "", "", "", "", ""]
             else:
-                values = [label, str(roi.slice_idx + 1)] + [f"{v:.2f}" for v in (
-                    roi.mean_val, roi.median_val, roi.std_val, roi.min_val, roi.max_val)]
+                values = ([label, str(roi.slice_idx + 1)]
+                          + [f"{v:.2f}" for v in (roi.mean_val, roi.median_val, roi.std_val, roi.cv,
+                                                  roi.min_val, roi.max_val)]
+                          + ["⚠" if roi.flags else ""])
 
             row = self.stats_table.rowCount()
             self.stats_table.insertRow(row)
@@ -56,7 +58,11 @@ class StatisticsPanel(QWidget):
                 item = QTableWidgetItem(value)
                 if roi is None:
                     item.setForeground(QColor(Qt.gray))
-                elif roi.slice_idx == current_slice:
+                elif roi.flags:
+                    # Quality warning: high CV or edge/heterogeneity
+                    item.setForeground(QColor(220, 120, 0))
+                    item.setToolTip(roi.flags)
+                if roi is not None and roi.slice_idx == current_slice:
                     font = item.font()
                     font.setBold(True)
                     item.setFont(font)
@@ -96,8 +102,8 @@ class StatisticsPanel(QWidget):
         for roi in self.roi_manager.rois:
             row = table.rowCount()
             table.insertRow(row)
-            for col, (_, getter) in enumerate(EXPORT_COLUMNS):
-                table.setItem(row, col, QTableWidgetItem(format_value(getter(roi))))
+            for col, value in enumerate(self.roi_manager.export_row(roi)):
+                table.setItem(row, col, QTableWidgetItem(value))
         
         # Add table to layout
         layout.addWidget(table)

@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QShortcut
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QShortcut, QCheckBox
 from PyQt5.QtCore import Qt, QSize, QPointF, QLineF
 from PyQt5.QtGui import QPainter, QKeySequence
 from PyQt5.QtCore import pyqtSignal
@@ -82,7 +82,17 @@ class ImageViewerPanel(QWidget):
         self.series_label = QLabel("Series: None")
         self.series_label.setAlignment(Qt.AlignLeft)
         self.series_label.setAlignment(Qt.AlignVCenter)
-        self.layout.addWidget(self.series_label)
+
+        # Lock the current series against accidental ROI edits
+        self.lock_checkbox = QCheckBox("🔒 Lock series (Ctrl+L)")
+        self.lock_checkbox.setToolTip("Prevent drawing, moving, resizing or deleting ROIs in this series")
+        self.lock_checkbox.setEnabled(False)
+        self.lock_checkbox.toggled.connect(self.on_lock_toggled)
+
+        self.series_bar = QHBoxLayout()
+        self.series_bar.addWidget(self.series_label, 1)
+        self.series_bar.addWidget(self.lock_checkbox)
+        self.layout.addLayout(self.series_bar)
         
         # Image display
         self.image_label = QLabel("No image loaded")
@@ -112,6 +122,22 @@ class ImageViewerPanel(QWidget):
 
         # blank label for spacing
         self.layout.addWidget(QLabel(""))
+
+    def on_lock_toggled(self, locked):
+        if self.dicom_model.current_series_path:
+            self.roi_manager.set_locked(self.dicom_model.current_series_path, locked)
+
+    def toggle_lock(self):
+        if self.lock_checkbox.isEnabled():
+            self.lock_checkbox.toggle()
+
+    def update_lock_state(self):
+        """Sync the lock checkbox with the current series"""
+        path = self.dicom_model.current_series_path
+        self.lock_checkbox.setEnabled(path is not None)
+        self.lock_checkbox.blockSignals(True)
+        self.lock_checkbox.setChecked(self.roi_manager.is_locked(path))
+        self.lock_checkbox.blockSignals(False)
 
     def update_series_label(self):
         """Update the series label with the current series name"""
@@ -212,6 +238,9 @@ class ImageViewerPanel(QWidget):
             self.last_pos = pos
         elif event.button() == Qt.LeftButton:
             roi, part = self.hit_test(pos)
+            if (roi is not None or self.drawing_roi) and \
+                    self.roi_manager.refuse_if_locked(self.dicom_model.current_series_path):
+                return
             if roi is not None:
                 # Move (inside) or resize (edge) an existing ROI
                 self.mode = 'move' if part == 'inside' else 'resize'
@@ -265,8 +294,9 @@ class ImageViewerPanel(QWidget):
             # Update ROI preview while drawing
             self.roi_current_pos = pos
         else:
-            # Hover: show move/resize cursor over ROIs
-            _, part = self.hit_test(pos)
+            # Hover: show move/resize cursor over ROIs (not in locked series)
+            locked = self.roi_manager.is_locked(self.dicom_model.current_series_path)
+            _, part = (None, None) if locked else self.hit_test(pos)
             if part == 'inside':
                 self.image_label.setCursor(Qt.SizeAllCursor)
             elif part == 'edge':

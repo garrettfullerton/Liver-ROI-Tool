@@ -1,6 +1,6 @@
 import os
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget, 
-                           QTreeWidgetItem, QFileDialog)
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget,
+                           QTreeWidgetItem, QTreeWidgetItemIterator, QFileDialog, QLabel)
 from PyQt5.QtCore import Qt, pyqtSignal
 
 from app_config import get_settings
@@ -13,6 +13,8 @@ class SeriesNavigatorPanel(QWidget):
     copy_rois_requested = pyqtSignal()
     folder_opened = pyqtSignal(str)  # root directory
     info_requested = pyqtSignal()
+    exam_step_requested = pyqtSignal(int)  # -1 previous exam, +1 next exam
+    next_incomplete_requested = pyqtSignal()
     
     def __init__(self, parent, dicom_model, roi_manager):
         super().__init__(parent)
@@ -41,6 +43,29 @@ class SeriesNavigatorPanel(QWidget):
         self.series_tree.itemClicked.connect(self.on_series_selected)
         self.layout.addWidget(self.series_tree)
         
+        # Batch navigation: previous/next exam and next incomplete series
+        self.exam_layout = QHBoxLayout()
+        self.prev_exam_button = QPushButton("◀")
+        self.prev_exam_button.setToolTip("Previous exam (Ctrl+PageUp)")
+        self.prev_exam_button.setMaximumWidth(36)
+        self.prev_exam_button.clicked.connect(lambda: self.exam_step_requested.emit(-1))
+        self.exam_label = QLabel("No exam")
+        self.exam_label.setAlignment(Qt.AlignCenter)
+        self.exam_label.setWordWrap(True)
+        self.next_exam_button = QPushButton("▶")
+        self.next_exam_button.setToolTip("Next exam (Ctrl+PageDown)")
+        self.next_exam_button.setMaximumWidth(36)
+        self.next_exam_button.clicked.connect(lambda: self.exam_step_requested.emit(1))
+        self.exam_layout.addWidget(self.prev_exam_button)
+        self.exam_layout.addWidget(self.exam_label, 1)
+        self.exam_layout.addWidget(self.next_exam_button)
+        self.layout.addLayout(self.exam_layout)
+
+        self.next_incomplete_button = QPushButton("Next Incomplete Series (Ctrl+J)")
+        self.next_incomplete_button.setToolTip("Jump to the next unlocked series missing ROIs")
+        self.next_incomplete_button.clicked.connect(self.next_incomplete_requested.emit)
+        self.layout.addWidget(self.next_incomplete_button)
+
         # Button to copy/propagate ROIs between series
         self.copy_rois_button = QPushButton("Copy / Propagate ROIs...")
         self.copy_rois_button.clicked.connect(self.on_copy_rois_requested)
@@ -112,6 +137,8 @@ class SeriesNavigatorPanel(QWidget):
 
         for series_path, item in self.series_items.items():
             text = self.dicom_model.get_series_label(series_path)
+            if self.roi_manager.is_locked(series_path):
+                text = "🔒 " + text
             n_done = len(segments_by_series.get(series_path, ()))
             if n_done:
                 text += f"   {'✓ ' if n_done >= n_labels else ''}{n_done}/{n_labels}"
@@ -121,6 +148,28 @@ class SeriesNavigatorPanel(QWidget):
             font.setBold(series_path == self.dicom_model.current_series_path)
             item.setFont(0, font)
     
+    def ordered_series_paths(self):
+        """All series in the order shown in the tree"""
+        paths = []
+        iterator = QTreeWidgetItemIterator(self.series_tree)
+        while iterator.value():
+            series_path = iterator.value().data(0, Qt.UserRole)
+            if series_path:
+                paths.append(series_path)
+            iterator += 1
+        return paths
+
+    def select_series(self, series_path):
+        """Highlight a series in the tree and load it"""
+        item = self.series_items.get(series_path)
+        if item is not None:
+            self.series_tree.setCurrentItem(item)
+            self.series_tree.scrollToItem(item)
+        self.series_selected.emit(series_path)
+
+    def set_exam_label(self, text):
+        self.exam_label.setText(text)
+
     def on_series_selected(self, item, column):
         """Handle series selection in the tree"""
         # Get the series path from the tree item

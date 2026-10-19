@@ -26,6 +26,10 @@ def build_help_html():
         ("Ctrl+Z", "Clear the most recent ROI on the current slice of the current series"),
         ("Ctrl+S", "Export ROIs to CSV (all series)"),
         ("Ctrl+0", "Reset zoom and pan"),
+        ("Ctrl+Up / Ctrl+Down, PageUp / PageDown", "Previous / next series (in tree order)"),
+        ("Ctrl+J", "Jump to the next incomplete series (unlocked and missing ROIs)"),
+        ("Ctrl+PageUp / Ctrl+PageDown", "Previous / next exam (batch mode; offers to export the exam you leave)"),
+        ("Ctrl+L", "Lock / unlock the current series"),
         ("F1", "Open this help window"),
     ]
     mouse = [
@@ -64,6 +68,7 @@ in the same series replaces the old one.</li>
 <table cellspacing="6">{_rows(mouse)}</table>
 
 <h3>Segment hotkeys by scheme</h3>
+<p>Custom layouts: Ctrl+1 … Ctrl+9 select ROIs 1–9; ROIs 10 and up are selected with their buttons.</p>
 <table cellspacing="6">{_segment_hotkeys_html()}</table>
 
 <h3>ROI controls</h3>
@@ -79,9 +84,35 @@ Series UID). Asks whether to replace or merge with existing ROIs, and switches t
 <li>Changing the <b>scheme</b> deletes all ROIs (asks first).</li>
 </ul>
 
-<h3>ROI table</h3>
-<p>Lists every segment of the scheme for the current series: slice and statistics, <i>—</i> if not drawn yet,
-<b>bold</b> if on the current slice. Segment buttons also show ✓ once drawn. Double-click a row to go to its slice.</p>
+<h3>ROI table and quality flags</h3>
+<p>Lists every segment of the scheme for the current series: slice, statistics and CV (std/mean), <i>—</i> if not
+drawn yet, <b>bold</b> if on the current slice. Segment buttons also show ✓ once drawn. Double-click a row to go to its slice.</p>
+<p>ROIs are flagged <b>⚠</b> (orange) when the CV is high, or when the inner half and outer ring of the ROI differ a lot
+(the ROI may cross the liver edge, a vessel or an artifact). Hover over a flagged row for details. Flags are also
+exported (CV and Flags columns). Thresholds are set in the advanced settings file.</p>
+
+<h3>Custom layouts</h3>
+<p><b>Custom Layout...</b> (under Segmentation Scheme) creates a layout with any number of ROIs, numbered 1…N, each with
+an optional name. Saved layouts appear in the scheme list and are remembered. They can be edited or deleted later.
+Importing a CSV drawn with a custom layout recreates the layout if it doesn't exist on this computer.</p>
+
+<h3>Locking series</h3>
+<p>Tick <b>🔒 Lock series</b> above the image (or press Ctrl+L) when a series is done. Locked series can't have ROIs drawn,
+moved, resized, deleted, copied or imported into them. They show 🔒 in the series tree, and the lock is saved in exports
+and restored on import. Clear All ROIs and scheme changes still clear locked series (after asking).</p>
+
+<h3>Batch mode (many exams)</h3>
+<p>Open a parent folder containing many exams. The ◀ / ▶ buttons (Ctrl+PageUp / Ctrl+PageDown) step through exams in tree
+order and show <i>Exam i/N</i>. When you leave an exam with unexported changes, you are asked to export that exam (or it
+is auto-exported). <b>Next Incomplete Series</b> (Ctrl+J) jumps to the next unlocked series missing ROIs.</p>
+
+<h3>Reader, auto-export and audit fields</h3>
+<ul>
+<li><b>Reader</b>: your initials, recorded with every ROI you draw, move or copy (remembered between sessions).</li>
+<li>Each ROI also records <b>Drawn At</b> (date/time drawn or last edited) and the <b>App Version</b>; all are exported.</li>
+<li><b>Auto-export to folder</b>: a few seconds after each change, every changed exam is written to
+<i>&lt;Patient&gt;_&lt;Exam&gt;_&lt;scheme&gt;_ROIs.csv</i> in the chosen folder, so you never need to export manually.</li>
+</ul>
 
 <h3>Copy / Propagate ROIs</h3>
 <ul>
@@ -104,6 +135,9 @@ Closing the app with unexported ROIs asks whether to export first.</p>
 <ul>
 <li><code>dicom_extensions</code>: file extensions treated as DICOM (default <code>.dcm</code>, <code>.sdcopen</code>).</li>
 <li><code>scan_all_files</code>: also check every other file for a DICOM header (finds extensionless files; slower).</li>
+<li><code>cv_warning_threshold</code>: flag ROIs with CV above this (default 0.2; 0 disables).</li>
+<li><code>edge_warning_threshold</code>: flag ROIs whose inner/outer means differ by more than this fraction of the
+median (default 0.2; 0 disables). Maps with values near zero (e.g. low PDFF) may need higher thresholds or 0.</li>
 </ul>
 """
 

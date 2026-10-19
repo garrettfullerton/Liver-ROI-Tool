@@ -1,11 +1,14 @@
 import os
+import re
 import numpy as np
 import csv
 from dataclasses import dataclass, field
+from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
-from schemes import SCHEMES, DEFAULT_SCHEME
+from schemes import SCHEMES, DEFAULT_SCHEME, CUSTOM_PREFIX, register_custom_scheme, save_custom_schemes, default_custom_label
+from app_config import CONFIG, VERSION_STRING, get_settings
 from roi_geometry import (compute_roi_stats, patient_to_normalized, get_pixel_spacing,
                           get_orientation, distance_to_slice)
 
@@ -32,6 +35,26 @@ class ROI:
     size_px: int
     series_path: str
     meta: dict = field(default_factory=dict)  # series-level DICOM info (DicomSeriesModel.series_meta)
+    edge_diff: float = float('nan')  # |inner-half mean - outer-ring mean| / median
+    reader: str = ""
+    drawn_at: str = ""  # when the ROI was drawn or last edited (ISO format)
+
+    @property
+    def cv(self):
+        """Coefficient of variation (std / |mean|)"""
+        return self.std_val / abs(self.mean_val) if self.mean_val else float('nan')
+
+    @property
+    def flags(self):
+        """Quality warnings (thresholds set in liver_roi_config.json)"""
+        flags = []
+        cv_threshold = CONFIG["cv_warning_threshold"]
+        if cv_threshold and self.cv > cv_threshold:
+            flags.append(f"high CV ({self.cv:.2f})")
+        edge_threshold = CONFIG["edge_warning_threshold"]
+        if edge_threshold and self.edge_diff > edge_threshold:
+            flags.append(f"edge/heterogeneity ({self.edge_diff:.0%})")
+        return "; ".join(flags)
 
     @property
     def radius_norm(self):
@@ -88,7 +111,20 @@ EXPORT_COLUMNS = [
     ("Columns", lambda r: r.meta.get('Columns')),
     ("Instance Number", lambda r: r.meta.get('InstanceNumber')),
     ("Slice Location", lambda r: r.meta.get('SliceLocation')),
+    ("CV", lambda r: r.cv),
+    ("Flags", lambda r: r.flags),
+    ("Locked", None),  # filled from ROIManager lock state
+    ("Reader", lambda r: r.reader),
+    ("Drawn At", lambda r: r.drawn_at),
+    ("App Version", lambda r: VERSION_STRING),
+    # Full ordered label list, so imports can recreate custom layouts exactly
+    ("Scheme Labels", lambda r: " | ".join(SCHEMES[r.scheme]["labels"]) if r.scheme in SCHEMES else ""),
 ]
+
+
+def safe_filename(text):
+    """Make a string safe to use in a file name"""
+    return re.sub(r'[^\w.-]+', '_', str(text)).strip('_') or "ROIs"
 
 
 def format_value(value):
@@ -107,7 +143,8 @@ class ROIManager(QObject):
     rois_changed = pyqtSignal()
     scheme_changed = pyqtSignal(str)  # scheme name
     message = pyqtSignal(str, bool)  # text, is_error (shown in the status bar / a warning dialog)
-    saved = pyqtSignal()  # all ROIs written to (or freshly loaded from) a user CSV
+    saved = pyqtSignal()  # no unexported changes remain (all changed series written to a user CSV)
+    schemes_updated = pyqtSignal()  # a custom layout was added (e.g. recreated from an imported file)
     
     def __init__(self, dicom_model):
         super().__init__()
@@ -116,6 +153,39 @@ class ROIManager(QObject):
         self.current_segment = 0
         self.segmentation_scheme = DEFAULT_SCHEME
         self.segment_labels = SCHEMES[DEFAULT_SCHEME]["labels"]
+        self.unsaved_series = set()  # series with changes not yet exported
+        self.locked_series = set()  # series protected from edits
+        self.reader = ""  # reader initials recorded with new ROIs
+
+    def _changed(self, series_paths):
+        """Record unexported changes for series and notify listeners"""
+        self.unsaved_series |= set(series_paths)
+        self.rois_changed.emit()
+
+    def mark_saved(self, series_paths):
+        """Mark series as exported; emits saved when nothing unexported remains"""
+        self.unsaved_series -= set(series_paths)
+        if not self.unsaved_series:
+            self.saved.emit()
+
+    def is_locked(self, series_path):
+        return series_path in self.locked_series
+
+    def set_locked(self, series_path, locked):
+        """Lock/unlock a series against ROI edits"""
+        if locked == self.is_locked(series_path):
+            return
+        if locked:
+            self.locked_series.add(series_path)
+        else:
+            self.locked_series.discard(series_path)
+        self._changed({series_path})
+
+    def refuse_if_locked(self, series_path):
+        if self.is_locked(series_path):
+            self.message.emit("This series is locked; unlock it (Ctrl+L) to change its ROIs", False)
+            return True
+        return False
     
     def create_roi(self, series_path, slice_idx, segment, norm_x, norm_y, radius_px):
         """Build an ROI (with statistics) on a slice of any loaded series; returns None if invalid"""
@@ -138,21 +208,30 @@ class ROIManager(QObject):
                    series_path=series_path,
                    meta={**self.dicom_model.get_series_meta(series_path),
                          **self.dicom_model.get_slice_meta(slice_idx, series_path)},
+                   reader=self.reader,
+                   drawn_at=datetime.now().isoformat(timespec='seconds'),
                    **stats)
 
     def add_roi(self, roi):
         """Add a new ROI, replacing any ROI of the same segment in the same series"""
+        if self.refuse_if_locked(roi.series_path):
+            return False
         self.rois = [r for r in self.rois
                      if not (r.segment == roi.segment and r.series_path == roi.series_path)]
         self.rois.append(roi)
-        self.rois_changed.emit()
+        if roi.flags:
+            self.message.emit(f"Check ROI {roi.segment_label}: {roi.flags}", False)
+        self._changed({roi.series_path})
         return True
     
     def delete_roi(self, roi_index):
         """Delete a specific ROI"""
         if 0 <= roi_index < len(self.rois):
+            series_path = self.rois[roi_index].series_path
+            if self.refuse_if_locked(series_path):
+                return False
             del self.rois[roi_index]
-            self.rois_changed.emit()
+            self._changed({series_path})
             return True
         return False
     
@@ -169,10 +248,12 @@ class ROIManager(QObject):
         return False
     
     def clear_all_rois(self):
-        """Clear all ROIs"""
+        """Clear all ROIs (including locked series) and remove all locks"""
         if self.rois:
+            series_paths = {roi.series_path for roi in self.rois}
             self.rois = []
-            self.rois_changed.emit()
+            self.locked_series.clear()
+            self._changed(series_paths)
             return True
         return False
     
@@ -194,19 +275,33 @@ class ROIManager(QObject):
         """Get ROIs for a specific slice"""
         return [roi for roi in self.rois if roi.slice_idx == slice_idx and roi.series_path == series_path]
     
-    def export_rois(self, filename=None):
-        """Export ROIs to a CSV file"""
-        if not self.rois:
+    def default_export_name(self, series_paths=None, suffix="ROIs"):
+        """Default file name '<PatientID>_<StudyID>_<scheme>_<suffix>.csv' for an exam (or the current series)"""
+        series_path = sorted(series_paths)[0] if series_paths else self.dicom_model.current_series_path
+        meta = self.dicom_model.get_series_meta(series_path)
+        parts = [meta.get('PatientID') or self.dicom_model.current_study_name,
+                 meta.get('StudyID') or self.dicom_model.current_exam_number,
+                 self.segmentation_scheme, suffix]
+        return "_".join(safe_filename(part) for part in parts if part) + ".csv"
+
+    def _ask_save_path(self, title, default_name):
+        """File dialog starting in the last export folder"""
+        settings = get_settings()
+        filename, _ = QFileDialog.getSaveFileName(
+            None, title, os.path.join(settings.value("last_export_dir", ""), default_name), "CSV Files (*.csv)")
+        if filename:
+            settings.setValue("last_export_dir", os.path.dirname(filename))
+        return filename
+
+    def export_rois(self, filename=None, series_paths=None):
+        """Export ROIs to a CSV file (all series, or only series_paths)"""
+        rois = [roi for roi in self.rois if series_paths is None or roi.series_path in series_paths]
+        if not rois:
             self.message.emit("No ROIs to export", True)
             return False
             
         if filename is None:
-            # Show file dialog
-            default_path = f"{self.dicom_model.current_study_name}_{self.dicom_model.current_exam_number}_{self.segmentation_scheme}_ROIs.csv"
-
-            filename, _ = QFileDialog.getSaveFileName(
-                None, "Save Statistics", default_path, "CSV Files (*.csv)"
-            )
+            filename = self._ask_save_path("Save ROIs", self.default_export_name(series_paths))
             
         if not filename:
             return False
@@ -215,22 +310,29 @@ class ROIManager(QObject):
             filename += '.csv'
         
         try:
-            self.write_csv(filename)
-            n_series = len(self.get_series_with_rois())
-            self.message.emit(f"Exported {len(self.rois)} ROIs from {n_series} series to {os.path.basename(filename)}", False)
-            self.saved.emit()
+            self.write_csv(filename, series_paths)
+            n_series = len({roi.series_path for roi in rois})
+            self.message.emit(f"Exported {len(rois)} ROIs from {n_series} series to {os.path.basename(filename)}", False)
+            self.mark_saved(self.unsaved_series if series_paths is None else series_paths)
             return True
         except Exception as e:
             self.message.emit(f"Error exporting ROIs: {e}", True)
             return False
 
-    def write_csv(self, filename):
-        """Write all ROIs to a CSV file (one row per ROI)"""
+    def write_csv(self, filename, series_paths=None):
+        """Write ROIs (all, or only those in series_paths) to a CSV file, one row per ROI"""
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([header for header, _ in EXPORT_COLUMNS])
             for roi in self.rois:
-                writer.writerow([format_value(getter(roi)) for _, getter in EXPORT_COLUMNS])
+                if series_paths is not None and roi.series_path not in series_paths:
+                    continue
+                writer.writerow(self.export_row(roi))
+
+    def export_row(self, roi):
+        """Formatted values of EXPORT_COLUMNS for one ROI"""
+        return [("yes" if self.is_locked(roi.series_path) else "") if getter is None else format_value(getter(roi))
+                for _, getter in EXPORT_COLUMNS]
 
     def export_wide(self, filename=None):
         """Export a summary CSV with one row per series and columns per segment"""
@@ -239,8 +341,7 @@ class ROIManager(QObject):
             return False
 
         if filename is None:
-            default_path = f"{self.dicom_model.current_study_name}_{self.dicom_model.current_exam_number}_{self.segmentation_scheme}_summary.csv"
-            filename, _ = QFileDialog.getSaveFileName(None, "Save Summary", default_path, "CSV Files (*.csv)")
+            filename = self._ask_save_path("Save Summary", self.default_export_name(suffix="summary"))
         if not filename:
             return False
         if not filename.lower().endswith('.csv'):
@@ -250,7 +351,7 @@ class ROIManager(QObject):
                           ("Series ID", 'SeriesDescription'), ("Series Date", 'SeriesDate'),
                           ("Series Time", 'SeriesTime'), ("Series UID", 'SeriesInstanceUID')]
         stat_columns = [("Mean", lambda r: r.mean_val), ("Median", lambda r: r.median_val),
-                        ("Std", lambda r: r.std_val), ("Area (mm2)", lambda r: r.area_mm2),
+                        ("Std", lambda r: r.std_val), ("CV", lambda r: r.cv), ("Area (mm2)", lambda r: r.area_mm2),
                         ("Slice", lambda r: r.slice_idx + 1)]
 
         header = ([name for name, _ in series_columns] + ["Series Path", "Scheme"]
@@ -275,6 +376,7 @@ class ROIManager(QObject):
 
     def _detect_scheme(self, rows, current_scheme):
         """Pick the scheme for imported rows: 'Scheme' column if present, otherwise infer from labels"""
+        self._register_imported_custom_schemes(rows)
         schemes = [row["scheme"] for row in rows if row.get("scheme") in SCHEMES]
         if schemes:
             counts = {scheme: schemes.count(scheme) for scheme in set(schemes)}
@@ -291,6 +393,31 @@ class ROIManager(QObject):
                 return scheme
         return current_scheme
         
+    def _register_imported_custom_schemes(self, rows):
+        """Recreate custom layouts named in the file that don't exist on this computer"""
+        for scheme in {row.get("scheme", "") for row in rows}:
+            if not scheme.startswith(CUSTOM_PREFIX) or scheme in SCHEMES:
+                continue
+            scheme_rows = [row for row in rows if row.get("scheme") == scheme]
+            full_labels = next((row["scheme labels"] for row in scheme_rows if row.get("scheme labels")), "")
+            if full_labels:
+                labels = [label.strip() for label in full_labels.split(" | ")]
+            else:
+                # Older files: rebuild from the labels that have ROIs
+                labels_by_index = {}
+                for row in scheme_rows:
+                    try:
+                        labels_by_index[int(row["segment index"])] = row["segment label"]
+                    except (KeyError, ValueError):
+                        pass
+                if not labels_by_index:
+                    continue
+                labels = [labels_by_index.get(i, default_custom_label(i)) for i in range(1, max(labels_by_index) + 1)]
+            register_custom_scheme(scheme[len(CUSTOM_PREFIX):], labels)
+            save_custom_schemes()
+            self.schemes_updated.emit()
+            self.message.emit(f"Added custom layout '{scheme[len(CUSTOM_PREFIX):]}' from the imported file", False)
+
     def _ask_import_mode(self, scheme):
         """Ask whether imported ROIs replace or merge with existing ones; returns 'replace', 'merge' or None"""
         if not self.rois:
@@ -364,6 +491,7 @@ class ROIManager(QObject):
         uid_to_path = {meta.get('SeriesInstanceUID'): path
                        for path, meta in self.dicom_model.series_meta.items()}
         imported, imported_series, skipped = 0, set(), {}
+        lock_after_import = set()
         skip = lambda reason: skipped.__setitem__(reason, skipped.get(reason, 0) + 1)
         
         # Rebuild ROIs; statistics are recomputed from the image
@@ -372,6 +500,10 @@ class ROIManager(QObject):
                 series_path = uid_to_path.get(row["series uid"])
                 if series_path is None or not self.dicom_model.read_series(series_path):
                     skip("series not in opened folder")
+                    continue
+
+                if self.is_locked(series_path):
+                    skip("series locked")
                     continue
                 
                 if row["segment label"] not in self.segment_labels:
@@ -396,15 +528,22 @@ class ROIManager(QObject):
                 if roi is None:
                     skip("outside image")
                     continue
+                # Keep who drew the ROI and when, if recorded in the file
+                roi.reader = row.get("reader") or roi.reader
+                roi.drawn_at = row.get("drawn at") or roi.drawn_at
                 self.add_roi(roi)
                 imported += 1
                 imported_series.add(series_path)
+                if row.get("locked", "").lower() == "yes":
+                    lock_after_import.add(series_path)
                                        
             except (ValueError, IndexError):
                 skip("unreadable row")
 
+        self.locked_series |= lock_after_import
         if mode == "replace" and imported:
-            self.saved.emit()
+            # The ROIs now match the file
+            self.mark_saved(set(self.unsaved_series))
 
         summary = f"Imported {imported} ROIs into {len(imported_series)} series"
         if skipped:
@@ -436,6 +575,10 @@ class ROIManager(QObject):
         
         if not source_series_path or not target_series_path or source_series_path == target_series_path:
             result['error'] = "invalid source/target series"
+            return result
+
+        if self.is_locked(target_series_path):
+            result['error'] = "series is locked"
             return result
 
         # Make sure both series are read (target need not be the displayed series)
@@ -510,7 +653,7 @@ class ROIManager(QObject):
             self.rois.append(new_roi)
 
         # Update display
-        self.rois_changed.emit()
+        self._changed({target_series_path} if new_rois else set())
         
         result['copied'] = len(new_rois)
         return result

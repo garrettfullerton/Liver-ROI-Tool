@@ -332,6 +332,16 @@ class DicomSeriesModel(QObject):
         except (TypeError, ValueError):
             return (1, 0, self.get_series_label(series_path))
 
+    def get_exam_key(self, series_path):
+        """Identifier of the exam a series belongs to (StudyInstanceUID, else its parent folder)"""
+        return self.series_meta.get(series_path, {}).get('StudyInstanceUID') or os.path.dirname(series_path)
+
+    def get_exam_label(self, series_path):
+        """Human-readable exam name: '<PatientID> / exam <StudyID>'"""
+        meta = self.series_meta.get(series_path, {})
+        patient = meta.get('PatientID') or os.path.basename(os.path.dirname(series_path))
+        return f"{patient} / exam {meta.get('StudyID')}" if meta.get('StudyID') else patient
+
     def get_exam_series(self, series_path):
         """All known series in the same exam (StudyInstanceUID) as series_path, sorted by series number"""
         study_uid = self.series_meta.get(series_path, {}).get('StudyInstanceUID')

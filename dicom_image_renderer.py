@@ -194,7 +194,10 @@ class DicomImageRenderer(QObject):
             8: QColor(128, 0, 255, 128),  # Purple
             9: QColor(0, 128, 128, 128),  # Teal
         }
-        return colors.get(segment, QColor(255, 255, 255, 128))
+        if segment in colors:
+            return colors[segment]
+        # Custom layouts with more than 9 ROIs: spread hues around the color wheel
+        return QColor.fromHsv((segment * 67) % 360, 200, 255, 128)
     
     def roi_display_geometry(self, roi, label_size):
         """(center, radius) of an ROI in display pixels"""

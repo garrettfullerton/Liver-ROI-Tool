@@ -10,12 +10,13 @@ AUTOSAVE_DELAY_MS = 2000
 class SessionManager(QObject):
     """Tracks unexported ROI changes, autosaves them per opened folder, and offers recovery"""
 
-    def __init__(self, roi_manager, parent_widget):
+    def __init__(self, roi_manager, dicom_model, parent_widget):
         super().__init__()
         self.roi_manager = roi_manager
+        self.dicom_model = dicom_model
         self.parent_widget = parent_widget
         self.root_dir = None
-        self.dirty = False
+        self.auto_export_dir = None  # folder for automatic per-exam exports (None = off)
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
@@ -34,17 +35,56 @@ class SessionManager(QObject):
         digest = hashlib.md5(os.path.abspath(self.root_dir).encode()).hexdigest()[:8]
         return os.path.join(directory, f"{os.path.basename(os.path.normpath(self.root_dir))}_{digest}.csv")
 
+    @property
+    def dirty(self):
+        """True while some series have unexported ROI changes"""
+        return bool(self.roi_manager.unsaved_series)
+
+    def set_auto_export_dir(self, directory):
+        """Enable automatic per-exam export to directory (None disables)"""
+        self.auto_export_dir = directory or None
+        if self.auto_export_dir and self.dirty:
+            self.autosave_timer.start()
+
     def on_rois_changed(self):
-        self.dirty = True
-        self.autosave_timer.start()
+        if self.dirty:
+            self.autosave_timer.start()
 
     def on_saved(self):
         """ROIs were exported (or replaced from a file): nothing left to recover"""
-        self.dirty = False
         self.autosave_timer.stop()
         self.remove_autosave()
 
+    def flush(self):
+        """Run a pending autosave/auto-export immediately"""
+        if self.autosave_timer.isActive():
+            self.autosave_timer.stop()
+            self.autosave()
+
+    def auto_export(self):
+        """Write each exam with unexported changes to '<PatientID>_<StudyID>_<scheme>_ROIs.csv' in the auto-export folder"""
+        exams = {}
+        for series_path in self.roi_manager.unsaved_series:
+            exams.setdefault(self.dicom_model.get_exam_key(series_path), set()).add(series_path)
+
+        for exam_series in exams.values():
+            # Export the whole exam, not just the changed series
+            exam_key = self.dicom_model.get_exam_key(next(iter(exam_series)))
+            exam_paths = {roi.series_path for roi in self.roi_manager.rois
+                          if self.dicom_model.get_exam_key(roi.series_path) == exam_key} | exam_series
+            filename = os.path.join(self.auto_export_dir, self.roi_manager.default_export_name(exam_paths))
+            try:
+                os.makedirs(self.auto_export_dir, exist_ok=True)
+                self.roi_manager.write_csv(filename, exam_paths)
+                self.roi_manager.mark_saved(exam_paths)
+            except OSError as e:
+                self.roi_manager.message.emit(f"Auto-export failed: {e}", True)
+                return
+
     def autosave(self):
+        if self.auto_export_dir and self.dirty:
+            self.auto_export()
+
         path = self.autosave_path()
         if not path or not self.dirty:
             return
@@ -65,9 +105,7 @@ class SessionManager(QObject):
     def on_folder_opened(self, root_dir):
         """Offer to restore unexported ROIs autosaved for this folder"""
         # Save pending changes for the previous folder before switching
-        if self.autosave_timer.isActive():
-            self.autosave_timer.stop()
-            self.autosave()
+        self.flush()
 
         self.root_dir = root_dir
         path = self.autosave_path()
@@ -84,6 +122,7 @@ class SessionManager(QObject):
 
     def confirm_close(self):
         """Ask before closing with unexported ROIs; returns True if the window may close"""
+        self.flush()
         if not self.dirty or not self.roi_manager.rois:
             return True
 
