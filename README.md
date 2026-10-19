@@ -9,7 +9,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - [x] Keyboard and mouse shortcuts
 - [x] Add and remove ROIs
 - [x] Export ROI statistics to CSV
-- [x] Switch between 9-segment and 4-segment ROI scheme
+- [x] Switch between 9-segment, 4-segment, left/right lobe, and whole-liver ROI schemes
 - [x] Copy ROIs between series (registered)
 - [x] Copy ROIs between series (unregistered)
 - [x] Load stored ROIs from a file
@@ -22,7 +22,7 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - Series Viewer: Display DICOM images with customizable window/level settings
 - Image Navigation: Scroll through slices using buttons, keyboard, mouse wheel, or slice slider
 - ROI Tools: Draw circular ROIs and associate them with liver segments
-- Segmentation Schemes: Switch between 9-segment and 4-segment liver anatomical models
+- Segmentation Schemes: 9-segment (Couinaud), 4-segment, left/right lobe, or a single whole-liver ROI
 - ROI Statistics: Calculate and display statistics (mean, median, min, max, size) for each ROI
 - Export Capabilities: Export ROIs and statistics to CSV files
 - ROI Copy: Copy ROIs between series at anatomical positions
@@ -59,8 +59,8 @@ python liver-app.py
 
 ## Keyboard Shortcuts
 - **Ctrl+1 to Ctrl+9**: Select liver segments 1-9
-- **Left/Right Arrow or Up/Down Arrow**: Navigate through slices
-- **Mouse Wheel**: Scroll through slices
+- **Left/Right Arrow or Up/Down Arrow**: Navigate through slices (works from any panel except while typing in a number field)
+- **Mouse Wheel / Touchpad**: Scroll through slices
 
 ## Project Structure
 - liver-app.py: Main application entry point
@@ -68,6 +68,7 @@ python liver-app.py
 - dicom_series_model.py: DICOM data management
 - dicom_image_renderer.py: Image rendering with window/level
 - roi_manager.py: ROI creation and analysis
+- schemes.py: ROI labeling schemes (labels, abbreviations, button layout)
 - series_navigator_panel.py: Series browser UI panel
 - image_viewer_panel.py: Image display UI panel
 - control_panel.py: Controls for window/level, segments, and ROIs

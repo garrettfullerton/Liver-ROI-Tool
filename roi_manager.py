@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 
+from schemes import SCHEMES, DEFAULT_SCHEME
+
 
 class ROI():
     def __init__(self, segment_label, segment, slice_idx, center_x, center_y, radius, 
@@ -51,8 +53,8 @@ class ROIManager(QObject):
                         #                   area_mm2, mean_val, median_val, min_val, max_val, size_px, 
                         #                   study_id, exam_number, series_id, series_path)]
         self.current_segment = 0
-        self.segmentation_scheme = "9-segment"  # Default to 9-segment scheme
-        self.segment_labels = []
+        self.segmentation_scheme = DEFAULT_SCHEME
+        self.segment_labels = SCHEMES[DEFAULT_SCHEME]["labels"]
     
     def add_roi(self, segment_label, segment, slice_idx, center_x, center_y, radius, 
                 center_LR_mm, center_AP_mm, center_SI_mm, orientation, 
@@ -135,9 +137,10 @@ class ROIManager(QObject):
         self.current_segment = segment
     
     def set_segmentation_scheme(self, scheme):
-        """Set segmentation scheme (9-segment or 4-segment)"""
-        if scheme in ("9-segment", "4-segment"):
+        """Set segmentation scheme (one of the keys in SCHEMES)"""
+        if scheme in SCHEMES:
             self.segmentation_scheme = scheme
+            self.segment_labels = SCHEMES[scheme]["labels"]
             self.clear_all_rois()
             return True
         return False

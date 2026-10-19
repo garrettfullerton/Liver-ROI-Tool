@@ -18,7 +18,8 @@ class ImageViewerPanel(QWidget):
         self.drawing_roi = False
         self.roi_start_pos = None
         self.roi_current_pos = None
-    
+        self.wheel_accum = 0
+
     def setup_ui(self):
         """Set up UI components for image viewing"""
         self.layout = QVBoxLayout(self)
@@ -84,9 +85,8 @@ class ImageViewerPanel(QWidget):
         # Enable mouse tracking for hovering effects
         self.image_label.setMouseTracking(True)
         
-        # Enable focus to capture keyboard events
+        # Arrow-key slice navigation is handled app-wide in DicomViewerApp.eventFilter
         self.image_label.setFocusPolicy(Qt.StrongFocus)
-        self.image_label.keyPressEvent = self.on_key_press
 
         self.image_label.setAlignment(Qt.AlignCenter)
         
@@ -312,9 +312,12 @@ class ImageViewerPanel(QWidget):
     
     def on_wheel(self, event):
         """Handle mouse wheel for slice navigation"""
-        # Calculate the number of steps (usually 1, but can be more for some mice)
-        steps = event.angleDelta().y() // 120
-        
+        # Accumulate wheel delta so high-resolution wheels/touchpads (small deltas) still step;
+        # int() truncates toward zero so up and down behave symmetrically
+        self.wheel_accum += event.angleDelta().y()
+        steps = int(self.wheel_accum / 120)
+        self.wheel_accum -= steps * 120
+
         # Navigate slices based on wheel direction
         if steps > 0:
             for _ in range(steps):
@@ -322,16 +325,6 @@ class ImageViewerPanel(QWidget):
         else:
             for _ in range(-steps):
                 self.dicom_model.next_slice()
-    
-    def on_key_press(self, event):
-        """Handle keyboard navigation"""
-        if event.key() == Qt.Key_Left or event.key() == Qt.Key_Up:
-            self.dicom_model.previous_slice()
-        elif event.key() == Qt.Key_Right or event.key() == Qt.Key_Down:
-            self.dicom_model.next_slice()
-        else:
-            # Pass event to parent class for default handling
-            super().keyPressEvent(event)
     
     def on_paint(self, event):
         """Custom paint event for image and ROIs"""

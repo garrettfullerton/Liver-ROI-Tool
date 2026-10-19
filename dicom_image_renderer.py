@@ -2,6 +2,8 @@ import numpy as np
 from PyQt5.QtCore import QObject, Qt, QRectF, QPointF
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QBrush, QColor
 
+from schemes import get_short_label
+
 class DicomImageRenderer(QObject):
     """Handles rendering of DICOM images with window/level and overlays"""
     def __init__(self, parent_widget, dicom_model, roi_manager):
@@ -100,21 +102,8 @@ class DicomImageRenderer(QObject):
         # Draw ROIs if provided
         if rois:
             for roi in rois:
-                if self.roi_manager.segmentation_scheme == "4-segment":
-                    if roi.segment_label == "Left Lateral":
-                        segment_label_disp = "LL"
-                    elif roi.segment_label == "Left Medial":
-                        segment_label_disp = "LM"
-                    elif roi.segment_label == "Right Anterior":
-                        segment_label_disp = "RA"
-                    elif roi.segment_label == "Right Posterior":
-                        segment_label_disp = "RP"
-                    else:
-                        segment_label_disp = roi.segment_label
-                else:
-                    segment_label_disp = roi.segment_label
-                
-                
+                segment_label_disp = get_short_label(self.roi_manager.segmentation_scheme, roi.segment_label)
+
                 # Scale ROI coordinates to current display
                 scaled_x = pixmap_rect.x() + (roi.center_x * pixmap_rect.width())
                 scaled_y = pixmap_rect.y() + (roi.center_y * pixmap_rect.height())

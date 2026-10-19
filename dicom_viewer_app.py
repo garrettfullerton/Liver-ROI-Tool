@@ -1,5 +1,6 @@
-from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog
-from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QFileDialog, QDialog,
+                             QApplication, QAbstractSpinBox, QLineEdit)
+from PyQt5.QtCore import Qt, QEvent, pyqtSlot
 
 from dicom_image_renderer import DicomImageRenderer
 from series_navigator_panel import SeriesNavigatorPanel
@@ -29,7 +30,23 @@ class DicomViewerApp(QMainWindow):
         
         # Connect signals between components
         self.connect_signals()
-    
+
+        # Route arrow keys to slice navigation regardless of which widget has focus
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """Navigate slices with arrow keys unless a text/number field is being edited"""
+        if event.type() == QEvent.KeyPress and self.isActiveWindow():
+            key = event.key()
+            if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
+                if not isinstance(QApplication.focusWidget(), (QAbstractSpinBox, QLineEdit)):
+                    if key in (Qt.Key_Up, Qt.Key_Left):
+                        self.dicom_model.previous_slice()
+                    else:
+                        self.dicom_model.next_slice()
+                    return True
+        return super().eventFilter(obj, event)
+
     def setup_ui(self):
         """Initialize and layout UI components"""
         # Main layout

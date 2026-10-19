@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 
+from schemes import SCHEMES, DEFAULT_SCHEME
+
 class ControlPanel(QWidget):
     """UI panel for controls (windowing, ROI drawing, segments)"""
     # Define signals
@@ -69,48 +71,28 @@ class ControlPanel(QWidget):
         self.scheme_group = QGroupBox("Segmentation Scheme")
         self.scheme_layout = QVBoxLayout()
         self.scheme_buttons = QButtonGroup()
-        
-        self.nine_segment_radio = QRadioButton("9-Segment")
-        self.nine_segment_radio.setChecked(True)
-        self.four_segment_radio = QRadioButton("4-Segment")
-        
-        self.scheme_buttons.addButton(self.nine_segment_radio, 9)
-        self.scheme_buttons.addButton(self.four_segment_radio, 4)
+
+        # One radio button per scheme; button id is the scheme's index in SCHEMES
+        for scheme_id, (scheme, scheme_def) in enumerate(SCHEMES.items()):
+            radio = QRadioButton(scheme_def["display_name"])
+            radio.setChecked(scheme == DEFAULT_SCHEME)
+            self.scheme_buttons.addButton(radio, scheme_id)
+            self.scheme_layout.addWidget(radio)
         self.scheme_buttons.buttonClicked.connect(self.on_scheme_changed)
-        
-        self.scheme_layout.addWidget(self.nine_segment_radio)
-        self.scheme_layout.addWidget(self.four_segment_radio)
+
         self.scheme_group.setLayout(self.scheme_layout)
         self.layout.addWidget(self.scheme_group)
-        
-        # Segment selection
-        self.segment_group = QGroupBox("Liver Segment")
-        self.segment_layout = QGridLayout()
-        
-        # Create segment buttons for 9-segment scheme
-        self.segment_buttons = {}
-        segments_9 = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-        segment_labels = ["1", "2", "3", "4a", "4b", "5", "6", "7", "8"]
-        self.roi_manager.segment_labels = segment_labels
-        row, col = 0, 0
-        for segment in segments_9:
-            btn = QPushButton(f"Segment {segment_labels[segment-1]}")
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda checked, s=segment: self.on_segment_selected(s))
-            
-            if segment < 10:
-                # Create shortcut using the number key (1-9)
-                btn.setShortcut(QKeySequence(f"Ctrl+{segment}"))
 
-            self.segment_buttons[segment] = btn
-            self.segment_layout.addWidget(btn, row, col)
-            col += 1
-            if col > 2:  # 3 columns layout
-                col = 0
-                row += 1
-        
+        # Segment selection
+        self.segment_group = QGroupBox("Liver Region")
+        self.segment_layout = QGridLayout()
+        self.segment_buttons = {}
+
         self.segment_group.setLayout(self.segment_layout)
         self.layout.addWidget(self.segment_group)
+
+        self.roi_manager.set_segmentation_scheme(DEFAULT_SCHEME)
+        self.build_segment_buttons(DEFAULT_SCHEME)
         
         # ROI Controls
         self.roi_group = QGroupBox("ROI Controls")
@@ -223,48 +205,34 @@ class ControlPanel(QWidget):
     
     def on_scheme_changed(self, button):
         """Handle segmentation scheme change"""
-        scheme = self.scheme_buttons.id(button)
-        
+        scheme = list(SCHEMES)[self.scheme_buttons.id(button)]
+
+        self.roi_manager.set_segmentation_scheme(scheme)
+        self.build_segment_buttons(scheme)
+
+        # Select first segment
+        self.on_segment_selected(1)
+
+    def build_segment_buttons(self, scheme):
+        """Replace the segment buttons with those for the given scheme"""
         # Clear existing segment buttons
-        for i in reversed(range(self.segment_layout.count())): 
-            self.segment_layout.itemAt(i).widget().setParent(None)
-        
+        for i in reversed(range(self.segment_layout.count())):
+            self.segment_layout.takeAt(i).widget().deleteLater()
+
         self.segment_buttons = {}
-        
-        if scheme == 9:
-            # 9-segment scheme
-            self.roi_manager.set_segmentation_scheme("9-segment")
-            segments = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-            segment_labels = ["1", "2", "3", "4a", "4b", "5", "6", "7", "8"]
-            self.roi_manager.segment_labels = segment_labels
-        else:
-            # 4-segment scheme
-            self.roi_manager.set_segmentation_scheme("4-segment")
-            segments = [1, 2, 3, 4]
-            segment_labels = ["Left Lateral", "Left Medial", "Right Anterior", "Right Posterior"]
-            self.roi_manager.segment_labels = segment_labels
-        
-        # Create new segment buttons
-        row, col = 0, 0
-        for segment in segments:
-            btn_text = f"Segment {segment_labels[segment-1]}" if scheme == 9 else segment_labels[segment-1]
-            btn = QPushButton(btn_text)
+        scheme_def = SCHEMES[scheme]
+
+        for segment, label in enumerate(scheme_def["labels"], start=1):
+            btn = QPushButton(scheme_def["button_format"].format(label))
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, s=segment: self.on_segment_selected(s))
-            
-            if segment < 10:
-                # Create shortcut using the number key (1-9)
-                btn.setShortcut(QKeySequence(f"Ctrl+{segment}"))
+
+            # Create shortcut using the number key (1-9)
+            btn.setShortcut(QKeySequence(f"Ctrl+{segment}"))
 
             self.segment_buttons[segment] = btn
+            row, col = divmod(segment - 1, scheme_def["columns"])
             self.segment_layout.addWidget(btn, row, col)
-            col += 1
-            if (col > 2 and scheme == 9) or (col > 1 and scheme == 4):
-                col = 0
-                row += 1
-        
-        # Select first segment
-        self.on_segment_selected(segments[0])
     
     def on_segment_selected(self, segment):
         """Handle segment selection"""
