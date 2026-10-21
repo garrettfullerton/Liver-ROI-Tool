@@ -360,7 +360,7 @@ class ROIManager(QObject):
             with open(filename, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow(header)
-                for series_path in sorted(self.get_series_with_rois(), key=self.dicom_model.series_sort_key):
+                for series_path in self.get_series_with_rois():
                     meta = self.dicom_model.get_series_meta(series_path)
                     rois_by_segment = {roi.segment: roi for roi in self.rois if roi.series_path == series_path}
                     row = [format_value(meta.get(key)) for _, key in series_columns] + [series_path, self.segmentation_scheme]
@@ -659,5 +659,5 @@ class ROIManager(QObject):
         return result
 
     def get_series_with_rois(self):
-        """Paths of all series that currently have ROIs"""
-        return sorted({roi.series_path for roi in self.rois})
+        """Paths of all series that currently have ROIs, ordered by series number"""
+        return sorted({roi.series_path for roi in self.rois}, key=self.dicom_model.series_sort_key)
