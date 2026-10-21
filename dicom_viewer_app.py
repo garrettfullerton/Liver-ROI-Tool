@@ -44,6 +44,9 @@ class DicomViewerApp(QMainWindow):
 
     def eventFilter(self, obj, event):
         """Navigate slices with arrow keys unless a text/number field is being edited"""
+        if event.type() == QEvent.LayoutRequest and obj is self.control_panel:
+            # Segment buttons widen when they gain a ✓; keep the (horizontally unscrollable) panel wide enough
+            self.fit_control_panel_width()
         if event.type() == QEvent.KeyPress and self.isActiveWindow():
             key = event.key()
             if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
@@ -102,8 +105,7 @@ class DicomViewerApp(QMainWindow):
         self.control_scroll.setWidgetResizable(True)
         self.control_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.control_scroll.setFrameShape(QScrollArea.NoFrame)
-        self.control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width()
-                                            + self.control_scroll.verticalScrollBar().sizeHint().width())
+        self.fit_control_panel_width()
         self.main_layout.addWidget(self.control_scroll, 1)
         
         # Stats panel can be in control panel or separate
@@ -121,6 +123,11 @@ class DicomViewerApp(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
     
+    def fit_control_panel_width(self):
+        """Size the control scroll area so the panel is never clipped horizontally"""
+        self.control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width()
+                                            + self.control_scroll.verticalScrollBar().sizeHint().width())
+
     def connect_signals(self):
         """Connect signals between components"""
         # Connect navigator panel signals
