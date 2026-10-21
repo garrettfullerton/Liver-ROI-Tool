@@ -69,6 +69,38 @@ def distance_to_slice(ds, pos):
     return float(abs((np.array(pos) - ipp).dot(normal)))
 
 
+def get_slice_thickness(ds):
+    """SliceThickness in mm (0 if missing)"""
+    try:
+        return float(getattr(ds, 'SliceThickness', 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def closest_overlapping_slice(reference, slices):
+    """Index of the slice (same orientation) closest to the reference slice's center, or None.
+
+    Returns None unless the closest slice overlaps the reference, i.e. lies within half the larger
+    slice thickness (half the slice spacing if thickness is missing).
+    """
+    orientation = get_orientation(reference)
+    if orientation is None or not hasattr(reference, 'ImagePositionPatient'):
+        return None
+    center, _ = normalized_to_patient(reference, 0.5, 0.5)
+
+    candidates = [(distance_to_slice(ds, center), i) for i, ds in enumerate(slices)
+                  if get_orientation(ds) == orientation and hasattr(ds, 'ImagePositionPatient')]
+    if not candidates:
+        return None
+    distance, best = min(candidates)
+
+    tolerance = max(get_slice_thickness(reference), get_slice_thickness(slices[best])) / 2
+    if not tolerance and len(candidates) > 1:
+        neighbor = slices[best + 1] if best + 1 < len(slices) else slices[best - 1]
+        tolerance = distance_to_slice(neighbor, _plane_geometry(slices[best])[0]) / 2
+    return best if distance <= tolerance else None
+
+
 def compute_roi_stats(ds, pixel_values, norm_x, norm_y, radius_px):
     """Compute position, size and statistics of a circular ROI.
 

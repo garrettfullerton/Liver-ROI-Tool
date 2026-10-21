@@ -42,7 +42,8 @@ def build_help_html():
                                                    "(a dashed preview follows the cursor)"),
         ("Left-drag inside an ROI", "Move it (statistics are recomputed on release)"),
         ("Left-drag on an ROI's edge", "Resize it (the cursor changes when hovering over an ROI or its edge)"),
-        ("Click a series in the tree", "Load that series"),
+        ("Click a series in the tree", "Load that series (at the overlapping slice if in the same exam and "
+                                       "orientation, otherwise at its first ROI)"),
         ("Double-click a row in the ROI table", "Jump to the slice containing that segment's ROI"),
     ]
 
@@ -128,7 +129,9 @@ a summary lists what was copied or skipped for each series.</li>
 
 <h3>Autosave</h3>
 <p>Unexported ROIs are autosaved a few seconds after each change. Reopening the same folder offers to restore them.
-Closing the app with unexported ROIs asks whether to export first.</p>
+Closing the app with unexported ROIs asks whether to export first.
+With auto-export on, every ROI in the folder is also cached, and reopening the folder loads them automatically,
+so you can pick up where you left off.</p>
 
 <h3>Advanced settings</h3>
 <p>Edit <code>{CONFIG_PATH}</code> (restart to apply):</p>

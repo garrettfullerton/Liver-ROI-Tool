@@ -8,7 +8,13 @@ AUTOSAVE_DELAY_MS = 2000
 
 
 class SessionManager(QObject):
-    """Tracks unexported ROI changes, autosaves them per opened folder, and offers recovery"""
+    """Tracks unexported ROI changes, autosaves them per opened folder, and offers recovery.
+
+    Two files are kept per opened folder in the app-data directory:
+    - '<folder>_<hash>.csv': unexported changes only (removed once everything is exported); offered for restore
+    - '<folder>_<hash>_cache.csv': every ROI in the folder, kept up to date after each change; loaded
+      automatically when the folder is reopened with auto-export on, so earlier labeling carries over
+    """
 
     def __init__(self, roi_manager, dicom_model, parent_widget):
         super().__init__()
@@ -26,14 +32,18 @@ class SessionManager(QObject):
         roi_manager.rois_changed.connect(self.on_rois_changed)
         roi_manager.saved.connect(self.on_saved)
 
-    def autosave_path(self):
+    def autosave_path(self, suffix=""):
         """Autosave file for the opened folder (in the user's app-data directory)"""
         if not self.root_dir:
             return None
         directory = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation) or
                                  os.path.expanduser("~/.liver_roi_tool"), "autosave")
         digest = hashlib.md5(os.path.abspath(self.root_dir).encode()).hexdigest()[:8]
-        return os.path.join(directory, f"{os.path.basename(os.path.normpath(self.root_dir))}_{digest}.csv")
+        return os.path.join(directory, f"{os.path.basename(os.path.normpath(self.root_dir))}_{digest}{suffix}.csv")
+
+    def cache_path(self):
+        """Cache of all ROIs in the opened folder"""
+        return self.autosave_path("_cache")
 
     @property
     def dirty(self):
@@ -47,8 +57,8 @@ class SessionManager(QObject):
             self.autosave_timer.start()
 
     def on_rois_changed(self):
-        if self.dirty:
-            self.autosave_timer.start()
+        # Always (re)write the cache, even when the change left nothing unexported (e.g. a replacing import)
+        self.autosave_timer.start()
 
     def on_saved(self):
         """ROIs were exported (or replaced from a file): nothing left to recover"""
@@ -85,6 +95,8 @@ class SessionManager(QObject):
         if self.auto_export_dir and self.dirty:
             self.auto_export()
 
+        self.write_cache()
+
         path = self.autosave_path()
         if not path or not self.dirty:
             return
@@ -97,28 +109,56 @@ class SessionManager(QObject):
         except OSError as e:
             print(f"Autosave failed: {e}")
 
+    def write_cache(self):
+        """Write every ROI in the opened folder to the cache (removed when there are none)"""
+        path = self.cache_path()
+        if not path:
+            return
+        root = os.path.join(os.path.abspath(self.root_dir), "")
+        series_paths = {roi.series_path for roi in self.roi_manager.rois
+                        if os.path.abspath(roi.series_path).startswith(root)}
+        try:
+            if series_paths:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                self.roi_manager.write_csv(path, series_paths)
+            elif os.path.exists(path):
+                os.remove(path)
+        except OSError as e:
+            print(f"Writing ROI cache failed: {e}")
+
+    def load_cache(self):
+        """With auto-export on, load the cached ROIs for the opened folder without asking"""
+        path = self.cache_path()
+        if not self.auto_export_dir or not path or not os.path.exists(path):
+            return
+        unsaved_before = set(self.roi_manager.unsaved_series)
+        if self.roi_manager.import_rois(path, mode="merge"):
+            # Cached ROIs were already auto-exported; don't export them again
+            self.roi_manager.mark_saved(self.roi_manager.unsaved_series - unsaved_before)
+
     def remove_autosave(self):
         path = self.autosave_path()
         if path and os.path.exists(path):
             os.remove(path)
 
     def on_folder_opened(self, root_dir):
-        """Offer to restore unexported ROIs autosaved for this folder"""
+        """Load cached ROIs (auto-export on) and offer to restore unexported ROIs autosaved for this folder"""
         # Save pending changes for the previous folder before switching
         self.flush()
 
         self.root_dir = root_dir
         path = self.autosave_path()
-        if not path or not os.path.exists(path):
-            return
+        if path and os.path.exists(path):
+            answer = QMessageBox.question(
+                self.parent_widget, "Restore ROIs",
+                "Unexported ROIs from a previous session were found for this folder. Restore them?")
+            if answer == QMessageBox.Yes:
+                self.roi_manager.import_rois(path, mode="merge")
+            else:
+                self.remove_autosave()
 
-        answer = QMessageBox.question(
-            self.parent_widget, "Restore ROIs",
-            "Unexported ROIs from a previous session were found for this folder. Restore them?")
-        if answer == QMessageBox.Yes:
-            self.roi_manager.import_rois(path, mode="merge")
-        else:
-            self.remove_autosave()
+        # After the restore, so restored series stay marked unexported
+        self.load_cache()
 
     def confirm_close(self):
         """Ask before closing with unexported ROIs; returns True if the window may close"""

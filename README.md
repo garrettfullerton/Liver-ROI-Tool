@@ -12,12 +12,12 @@ A Python application for drawing and exporting ROI statistics, primarily intende
 - **ROI checklist:** table of every segment for the current series; double-click to jump to its slice
 - **Quality flags:** CV (std/mean) per ROI, with ⚠ warnings for high CV or an inner/outer mismatch suggesting the ROI crosses an edge, vessel or artifact
 - **Locking:** lock finished series so ROIs can't be accidentally drawn, moved, resized or overwritten
-- **Batch mode:** step through many exams in a parent folder; you're asked to export each exam before moving on. Jump between series or to the next incomplete series
+- **Batch mode:** step through many exams in a parent folder; you're asked to export each exam before moving on. Jump between series or to the next incomplete series. Switching series within an exam keeps the same slice position when the slices overlap (same orientation); otherwise a series opens on its first slice with ROIs
 - **Audit fields:** reader initials, date/time drawn and app version (with git commit) are stored with every ROI
 - **Copy / propagate:** copy ROIs to all or selected series in the same exam (or into the current series), matched by patient position for axial, coronal, sagittal or oblique series
 - **Export:** one row per ROI with statistics and series/acquisition info (series number/date/time, scanner, TR/TE/flip angle, slice thickness, etc.), or a summary with one row per series
 - **Import:** reload ROIs from any exported CSV (including older versions) into every matching series, replacing or merging; the scheme switches to match
-- **Autosave / auto-export:** unexported ROIs are autosaved per folder and offered for restore; optionally, every exam is exported automatically to a chosen folder after each change
+- **Autosave / auto-export:** unexported ROIs are autosaved per folder and offered for restore; optionally, every exam is exported automatically to a chosen folder after each change; with auto-export on, all ROIs in the folder are cached and loaded automatically when the folder is reopened
 
 ## Requirements
 - Python 3.10+

@@ -13,6 +13,7 @@ from propagate_dialog import PropagateROIsDialog
 from session_manager import SessionManager
 from info_dialog import InfoDialog
 from app_config import get_settings
+from roi_geometry import closest_overlapping_slice
 
 class DicomViewerApp(QMainWindow):
     """Main application class that orchestrates components"""
@@ -123,7 +124,7 @@ class DicomViewerApp(QMainWindow):
     def connect_signals(self):
         """Connect signals between components"""
         # Connect navigator panel signals
-        self.navigator_panel.series_selected.connect(self.dicom_model.load_series)
+        self.navigator_panel.series_selected.connect(self.open_series)
         self.navigator_panel.copy_rois_requested.connect(self.show_copy_rois_dialog)
         self.navigator_panel.folder_opened.connect(self.session_manager.on_folder_opened)
         self.navigator_panel.info_requested.connect(self.show_info_dialog)
@@ -183,6 +184,27 @@ class DicomViewerApp(QMainWindow):
 
 
     
+    def open_series(self, series_path):
+        """Load a series at the slice matching the current position (same exam and orientation, overlapping);
+        otherwise on its first slice with ROIs (if any)"""
+        slice_index = self.matching_slice(series_path)
+        if slice_index is None:
+            roi_slices = [roi.slice_idx for roi in self.roi_manager.rois if roi.series_path == series_path]
+            slice_index = min(roi_slices, default=0)
+        self.dicom_model.load_series(series_path, slice_index)
+
+    def matching_slice(self, series_path):
+        """Slice of series_path closest to the current slice, if both series are in the same exam"""
+        current = self.dicom_model.current_series_path
+        if current is None or current == series_path or \
+                self.dicom_model.get_exam_key(current) != self.dicom_model.get_exam_key(series_path):
+            return None
+        reference = self.dicom_model.get_current_slice()
+        target = self.dicom_model.read_series(series_path)
+        if reference is None or not target:
+            return None
+        return closest_overlapping_slice(reference, target)
+
     def on_series_loaded(self):
         window = int(round(self.dicom_model.default_window))
         level = int(round(self.dicom_model.default_level))

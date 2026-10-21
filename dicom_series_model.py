@@ -289,8 +289,8 @@ class DicomSeriesModel(QObject):
         
         return series_data
 
-    def load_series(self, series_path):
-        """Load a specific series and make it the current series"""
+    def load_series(self, series_path, slice_index=0):
+        """Load a specific series and make it the current series, starting at slice_index"""
         series_data = self.read_series(series_path)
         if not series_data:
             return False
@@ -298,7 +298,7 @@ class DicomSeriesModel(QObject):
         meta = self.series_meta[series_path]
         self.current_series = series_data
         self.current_series_path = series_path
-        self.current_slice_index = 0
+        self.current_slice_index = min(max(slice_index, 0), len(series_data) - 1)
         self.current_study_name = meta['PatientID']
         self.current_exam_number = meta['StudyID']
         self.current_series_name = meta['SeriesDescription']
