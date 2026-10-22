@@ -95,16 +95,8 @@ class SeriesNavigatorPanel(QWidget):
         self.series_tree.clear()
         self.series_items = {}
         
-        # Get directory structure from model
-        directory_structure = self.dicom_model.get_directory_structure()
-        
-        # Get sorted top-level keys
-        sorted_top_level = sorted(directory_structure.keys())
-        
-        # Populate tree with the hierarchical structure
-        for top_level in sorted_top_level:
-            top_item = QTreeWidgetItem(self.series_tree, [top_level])
-            self._add_tree_items(top_item, directory_structure[top_level])
+        # Populate tree with the folder hierarchy (series in the opened folder itself sit at the top level)
+        self._add_tree_items(self.series_tree.invisibleRootItem(), self.dicom_model.get_directory_structure())
         
         # Expand first level
         self.series_tree.expandToDepth(0)

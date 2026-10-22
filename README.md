@@ -2,7 +2,7 @@
 A Python application for drawing and exporting ROI statistics, primarily intended for quantitative liver MRI. It loads DICOM series, lets you draw circular ROIs labeled by liver segment, copies them across series in an exam, and exports statistics with series/acquisition information.
 
 ## Features
-- **DICOM browser:** finds series at any folder depth and groups them by patient and exam from the DICOM headers (so series stored in separate folders, e.g. maps reconstructed after the exam, appear together); lists them as `#SeriesNumber Description` with ROI progress (e.g. `5/9`, `✓ 9/9`)
+- **DICOM browser:** finds series at any folder depth; lists them as `#SeriesNumber Description` with ROI progress (e.g. `5/9`, `✓ 9/9`)
 - **Viewer:** window/level, zoom/pan, and a readout of pixel value and patient position (mm) under the cursor
 - **ROI schemes:** 9-segment (Couinaud), 4-segment, left/right lobe, a single whole-liver ROI, or **custom layouts** with any number of numbered, optionally named ROIs
 - **ROI drawing:** drag to draw, or click to place a fixed-diameter ROI; drag an ROI to move it or its edge to resize it

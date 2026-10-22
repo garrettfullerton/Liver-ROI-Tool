@@ -5,6 +5,7 @@ import pydicom
 import numpy as np
 from pydicom.errors import InvalidDicomError
 from pydicom.multival import MultiValue
+from pydicom.uid import ExplicitVRBigEndian, ExplicitVRLittleEndian, ImplicitVRLittleEndian
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from roi_geometry import get_orientation, get_pixel_values
@@ -29,9 +30,18 @@ def is_dicom_file(path):
 def read_dicom(path, stop_before_pixels=False):
     """Read a DICOM file, retrying without the standard header check (some exports lack the preamble)"""
     try:
-        return pydicom.dcmread(path, stop_before_pixels=stop_before_pixels)
+        ds = pydicom.dcmread(path, stop_before_pixels=stop_before_pixels)
     except InvalidDicomError:
-        return pydicom.dcmread(path, stop_before_pixels=stop_before_pixels, force=True)
+        ds = pydicom.dcmread(path, stop_before_pixels=stop_before_pixels, force=True)
+
+    # Files without a file meta header have no Transfer Syntax UID, so pydicom can't decode their pixels;
+    # fill it in from how the file was actually parsed (uncompressed data only)
+    if 'TransferSyntaxUID' not in ds.file_meta:
+        implicit_vr, little_endian = ds.original_encoding
+        if implicit_vr is not None:
+            ds.file_meta.TransferSyntaxUID = (ImplicitVRLittleEndian if implicit_vr else
+                                              ExplicitVRLittleEndian if little_endian else ExplicitVRBigEndian)
+    return ds
 
 
 def list_dicom_files(directory, filenames=None):
@@ -99,8 +109,8 @@ class DicomSeriesModel(QObject):
         # Read series headers (series number, exam, etc.)
         self._scan_series_headers(dicom_directories)
 
-        # Organize series by patient and exam
-        self._build_exam_tree(dicom_directories)
+        # Organize series in the folder tree
+        self._build_directory_tree(root_dir, dicom_directories)
         
         return True
     
@@ -121,28 +131,20 @@ class DicomSeriesModel(QObject):
         
         return dicom_dirs
 
-    def _build_exam_tree(self, dicom_directories):
-        """Group series as {patient: {exam: {series path: series path}}} using their headers, so series of one
-        exam stored in different folders (e.g. maps reconstructed after the exam) appear together"""
+    def _build_directory_tree(self, root_dir, dicom_directories):
+        """Folder tree as on disk: {folder name: {...}, series path: series path}.
+
+        Each series sits in its parent folder; keying series by full path keeps a folder that holds
+        DICOM files and also has series subfolders from clashing with those subfolders.
+        """
         self.directory_structure = {}
-        exam_nodes = {}  # exam key -> that exam's dict in the tree
         for dir_info in dicom_directories:
             path = dir_info['path']
-            exam_key = self.get_exam_key(path)
-            if exam_key not in exam_nodes:
-                meta = self.series_meta.get(path, {})
-                folder = os.path.basename(os.path.dirname(path))
-                patient = meta.get('PatientID') or folder or "Unknown"
-                study_id = meta.get('StudyID')
-                name = " ".join(part for part in (meta.get('StudyDate'), f"Exam {study_id}" if study_id else "")
-                                if part) or folder or "Exam"
-                patient_node = self.directory_structure.setdefault(patient, {})
-                # Keep different exams with the same name apart
-                unique_name, n = name, 2
-                while unique_name in patient_node:
-                    unique_name, n = f"{name} ({n})", n + 1
-                exam_nodes[exam_key] = patient_node[unique_name] = {}
-            exam_nodes[exam_key][path] = path
+            relative = os.path.relpath(path, root_dir)
+            node = self.directory_structure
+            for folder in ([] if relative == os.curdir else relative.split(os.sep)[:-1]):
+                node = node.setdefault(folder, {})
+            node[path] = path
 
     def _scan_series_headers(self, dicom_directories):
         """Read one header per series folder (no pixel data) so series can be labeled and grouped by exam"""
@@ -415,7 +417,7 @@ class DicomSeriesModel(QObject):
         return len(self.current_series)
     
     def get_directory_structure(self):
-        """Return the series tree: {patient: {exam: {series path: series path}}}"""
+        """Return the folder tree: {folder name: {...}, series path: series path}"""
         return self.directory_structure
     
     def get_current_series_path(self):
