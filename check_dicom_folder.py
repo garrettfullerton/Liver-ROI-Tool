@@ -3,7 +3,8 @@
 Usage (from the app's folder, in the app's Python environment):
     python check_dicom_folder.py <folder you open in the app>
 
-Reads every file's DICOM header, runs the app's own folder scanner, and compares the two. Prints exams and
+Reads every file's DICOM header, runs the app's own folder scanner and builds its series list (without
+opening a window), and compares them. Prints exams and
 folders by number and series by number/description; no patient information or folder names.
 """
 import os
@@ -12,10 +13,16 @@ import traceback
 
 import pydicom
 
-from app_config import CONFIG
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # build the series list without showing a window
+from PyQt5.QtWidgets import QApplication
+
+from app_config import CONFIG, VERSION_STRING
 from dicom_series_model import DicomSeriesModel
+from roi_manager import ROIManager
+from series_navigator_panel import SeriesNavigatorPanel
 
 root = sys.argv[1]
+print(f"App version {VERSION_STRING}")
 print(f"App picks up extensions {CONFIG['dicom_extensions']}; scan_all_files={CONFIG['scan_all_files']}")
 
 # 1. Every DICOM series actually on disk, by reading every file
@@ -54,6 +61,18 @@ except Exception:
     print("\n*** The app's folder scan FAILED (it would crash or show nothing):")
     traceback.print_exc()
 
+# 2b. The series list the app shows (the tree you click series in)
+app = QApplication.instance() or QApplication(sys.argv[:1])
+on_screen = set()
+try:
+    panel = SeriesNavigatorPanel(None, model, ROIManager(model))
+    panel.setup_ui()
+    panel.load_folder(root)
+    on_screen = set(panel.ordered_series_paths())
+except Exception:
+    print("\n*** Building the app's series list FAILED:")
+    traceback.print_exc()
+
 # 3. Compare
 series_per_folder = {}
 for uid, info in on_disk.items():
@@ -76,10 +95,12 @@ for uid, info in sorted(on_disk.items(), key=lambda item: (item[1]["study"], str
     if len(info["folders"]) > 1:
         reasons.append("files are split over folders " + ", ".join(str(folder_numbers[f]) for f in info["folders"]))
     if not any(f in listed_folders for f in info["folders"]):
-        reasons.insert(0, "NOT LISTED by the app")
+        reasons.insert(0, "NOT FOUND by the app's scan")
+    elif not any(f in on_screen for f in info["folders"]):
+        reasons.insert(0, "found by the scan but MISSING FROM THE SERIES LIST")
     if reasons:
         missing += 1
         print(f"Exam {study_no}, #{info['number']} {info['description']!r}: " + "; ".join(reasons))
 
-print(f"\n{len(on_disk)} series in {len(studies)} exams on disk; app lists {len(listed_folders)} series folders; "
-      f"{missing} series with problems")
+print(f"\n{len(on_disk)} series in {len(studies)} exams on disk; the app's scan finds {len(listed_folders)} series "
+      f"folders and its series list shows {len(on_screen)}; {missing} series with problems")

@@ -142,6 +142,8 @@ so you can pick up where you left off.</p>
 <li><code>cv_warning_threshold</code>: flag ROIs with CV above this (default 0.2; 0 disables).</li>
 <li><code>edge_warning_threshold</code>: flag ROIs whose inner/outer means differ by more than this fraction of the
 median (default 0.2; 0 disables). Maps with values near zero (e.g. low PDFF) may need higher thresholds or 0.</li>
+<li><code>max_cached_series</code>: series kept in memory for quick switching (default 10); older ones are re-read
+from disk when reopened. Lower it if memory runs out on large folders.</li>
 </ul>
 """
 

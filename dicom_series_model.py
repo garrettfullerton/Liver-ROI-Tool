@@ -1,4 +1,6 @@
 import os
+from collections import OrderedDict
+
 import pydicom
 import numpy as np
 from pydicom.errors import InvalidDicomError
@@ -73,7 +75,7 @@ class DicomSeriesModel(QObject):
         super().__init__()
         self.current_series = None
         self.current_slice_index = 0
-        self.series_data = {}  # Dictionary of loaded series
+        self.series_data = OrderedDict()  # Recently read series (least recently used first), see read_series
         self.series_meta = {}  # Series-level info keyed by path (filled by header scan, then on load)
         self.value_ranges = {}  # (min, max) rescaled pixel values keyed by path
         self.directory_structure = {}  
@@ -226,8 +228,13 @@ class DicomSeriesModel(QObject):
         }
 
     def read_series(self, series_path):
-        """Read (or return cached) slices of a series without making it the current series"""
+        """Read (or return cached) slices of a series without making it the current series.
+
+        Only the current series and the most recently read ones (max_cached_series) stay in memory;
+        keeping every opened series made large multi-exam folders run out of memory.
+        """
         if series_path in self.series_data:
+            self.series_data.move_to_end(series_path)
             return self.series_data[series_path]
 
         if not os.path.exists(series_path):
@@ -249,9 +256,14 @@ class DicomSeriesModel(QObject):
         # Sort by slice position (consistent with instance number order)
         series_data = sort_slices(series_data)
             
-        # Store the series data
+        # Store the series data, releasing the least recently used series (never the current one)
         self.series_data[series_path] = series_data
         self.series_meta[series_path] = self._extract_meta(series_data[0])
+        for old_path in list(self.series_data):
+            if len(self.series_data) <= max(CONFIG["max_cached_series"], 2):
+                break
+            if old_path not in (series_path, self.current_series_path):
+                del self.series_data[old_path]
         
         return series_data
 
@@ -318,15 +330,15 @@ class DicomSeriesModel(QObject):
         return sorted(paths, key=self.series_sort_key)
 
     def get_series(self, series_path):
-        """Return the (already read) slices of a series"""
-        return self.series_data.get(series_path, [])
+        """Return the slices of a series (read from disk if not in memory)"""
+        return self.read_series(series_path) or []
 
     def get_value_range(self, series_path=None):
         """(min, max) of rescaled pixel values over a series (cached)"""
         if series_path is None:
             series_path = self.current_series_path
         if series_path not in self.value_ranges:
-            values = [get_pixel_values(ds) for ds in self.series_data.get(series_path, [])]
+            values = [get_pixel_values(ds) for ds in self.get_series(series_path)] if series_path else []
             if not values:
                 return (0, 0)
             self.value_ranges[series_path] = (float(min(v.min() for v in values)),
@@ -345,7 +357,7 @@ class DicomSeriesModel(QObject):
     
     def get_slice(self, index, series_path=None):
         """Return slice at specified index (defaults to current series)"""
-        series = self.current_series if series_path is None else self.series_data.get(series_path)
+        series = self.current_series if series_path is None else self.read_series(series_path)
         if not series or not 0 <= index < len(series):
             return None
             

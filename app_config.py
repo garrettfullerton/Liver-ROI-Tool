@@ -15,6 +15,8 @@ DEFAULT_CONFIG = {
     # Flag ROIs whose inner-half vs outer-ring means differ by more than this fraction of the median,
     # suggesting an edge, vessel or artifact inside the ROI (0 disables)
     "edge_warning_threshold": 0.2,
+    # Number of series kept in memory for quick switching (older ones are re-read from disk when reopened)
+    "max_cached_series": 10,
 }
 
 APP_VERSION = "2.1"

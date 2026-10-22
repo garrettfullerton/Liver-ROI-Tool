@@ -198,7 +198,9 @@ class DicomViewerApp(QMainWindow):
         if slice_index is None:
             roi_slices = [roi.slice_idx for roi in self.roi_manager.rois if roi.series_path == series_path]
             slice_index = min(roi_slices, default=0)
-        self.dicom_model.load_series(series_path, slice_index)
+        if not self.dicom_model.load_series(series_path, slice_index):
+            self.show_message(f"Could not load {self.dicom_model.get_series_label(series_path)} "
+                              "(no readable images; see the console for details)", True)
 
     def matching_slice(self, series_path):
         """Slice of series_path closest to the current slice, if both series are in the same exam"""
