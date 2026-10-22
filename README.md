@@ -2,7 +2,7 @@
 A Python application for drawing and exporting ROI statistics, primarily intended for quantitative liver MRI. It loads DICOM series, lets you draw circular ROIs labeled by liver segment, copies them across series in an exam, and exports statistics with series/acquisition information.
 
 ## Features
-- **DICOM browser:** finds series at any folder depth; lists them as `#SeriesNumber Description` with ROI progress (e.g. `5/9`, `✓ 9/9`)
+- **DICOM browser:** finds series at any folder depth and groups them by patient and exam from the DICOM headers (so series stored in separate folders, e.g. maps reconstructed after the exam, appear together); lists them as `#SeriesNumber Description` with ROI progress (e.g. `5/9`, `✓ 9/9`)
 - **Viewer:** window/level, zoom/pan, and a readout of pixel value and patient position (mm) under the cursor
 - **ROI schemes:** 9-segment (Couinaud), 4-segment, left/right lobe, a single whole-liver ROI, or **custom layouts** with any number of numbered, optionally named ROIs
 - **ROI drawing:** drag to draw, or click to place a fixed-diameter ROI; drag an ROI to move it or its edge to resize it
@@ -79,6 +79,7 @@ Click **Info / Shortcuts** (or press **F1**) in the app for a full guide to feat
 - `propagate_dialog.py`, `custom_layout_dialog.py`, `info_dialog.py`: copy/propagate, custom layout and help dialogs
 - `session_manager.py`: autosave, auto-export, restore and unexported-changes warning
 - `app_config.py`: advanced settings and remembered UI settings
+- `check_dicom_folder.py`: read-only diagnostic that reports series on disk the app does not list, and why (`python check_dicom_folder.py <folder>`)
 
 ## Potential Future Developments
 - **Auto-advance segment:** after drawing an ROI, automatically select the next segment (saves a hotkey press per ROI).

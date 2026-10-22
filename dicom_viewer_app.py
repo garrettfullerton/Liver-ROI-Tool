@@ -283,11 +283,11 @@ class DicomViewerApp(QMainWindow):
         current = self.dicom_model.current_series_path
         if not exams:
             self.navigator_panel.set_exam_label("No exam")
-        elif current is None:
-            self.navigator_panel.set_exam_label(f"{len(exams)} exams — press ▶ to start")
+        elif current is None or self.dicom_model.get_exam_key(current) not in exams:
+            # Nothing loaded yet, or the loaded series is from a previously opened folder
+            self.navigator_panel.set_exam_label(f"{len(exams)} exam{'s' if len(exams) != 1 else ''} — press ▶ to start")
         else:
-            index = list(exams).index(self.dicom_model.get_exam_key(current)) + 1 \
-                if self.dicom_model.get_exam_key(current) in exams else 0
+            index = list(exams).index(self.dicom_model.get_exam_key(current)) + 1
             self.navigator_panel.set_exam_label(f"Exam {index}/{len(exams)}: {self.dicom_model.get_exam_label(current)}")
 
     def step_exam(self, step):

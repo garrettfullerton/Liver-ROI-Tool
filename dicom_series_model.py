@@ -93,12 +93,12 @@ class DicomSeriesModel(QObject):
         
         # Recursively scan the directory to find DICOM files
         dicom_directories = self._find_dicom_directories(root_dir)
-        
-        # Organize found directories in a tree structure
-        self._build_directory_tree(dicom_directories)
 
         # Read series headers (series number, exam, etc.)
         self._scan_series_headers(dicom_directories)
+
+        # Organize series by patient and exam
+        self._build_exam_tree(dicom_directories)
         
         return True
     
@@ -115,67 +115,33 @@ class DicomSeriesModel(QObject):
                 dicom_dirs.append({
                     'path': root,
                     'dicom_count': len(dicom_files),
-                    # Get relative path components for tree structure
-                    'components': os.path.relpath(root, root_dir).split(os.sep)
                 })
         
         return dicom_dirs
 
-    def _build_directory_tree(self, dicom_directories):
-        """Build a tree structure from found DICOM directories"""
-        # Group directories by their top-level component
-        top_level_groups = {}
-        
-        for dir_info in dicom_directories:
-            components = dir_info['components']
-            if components[0] == '.':  # Root directory
-                top_level = 'Root'
-            else:
-                top_level = components[0]
-                
-            if top_level not in top_level_groups:
-                top_level_groups[top_level] = []
-                
-            top_level_groups[top_level].append(dir_info)
-        
-        # Build the tree structure
+    def _build_exam_tree(self, dicom_directories):
+        """Group series as {patient: {exam: {series path: series path}}} using their headers, so series of one
+        exam stored in different folders (e.g. maps reconstructed after the exam) appear together"""
         self.directory_structure = {}
-        
-        # Get top-level keys in alphabetical order
-        sorted_top_level = sorted(top_level_groups.keys())
-        
-        for top_level in sorted_top_level:
-            self.directory_structure[top_level] = {}
-            dirs = top_level_groups[top_level]
-            
-            for dir_info in dirs:
-                components = dir_info['components']
-                path = dir_info['path']
-                
-                # Skip the top-level component (already used)
-                if components[0] == '.':
-                    # Handle root directory specially
-                    name = os.path.basename(path)
-                    self.directory_structure[top_level][name] = path
-                elif len(components) == 1:
-                    # Single level deep, add directly
-                    self.directory_structure[top_level][components[0]] = path
-                else:
-                    # Create intermediate levels
-                    current_level = self.directory_structure[top_level]
-                    for i in range(1, len(components)):
-                        component = components[i]
-                        
-                        if i == len(components) - 1:
-                            # Last component, store the path
-                            current_level[component] = path
-                        else:
-                            # Intermediate level, create if needed
-                            if component not in current_level:
-                                current_level[component] = {}
-                            
-                            current_level = current_level[component]
-   
+        exam_nodes = {}  # exam key -> that exam's dict in the tree
+        for dir_info in dicom_directories:
+            path = dir_info['path']
+            exam_key = self.get_exam_key(path)
+            if exam_key not in exam_nodes:
+                meta = self.series_meta.get(path, {})
+                folder = os.path.basename(os.path.dirname(path))
+                patient = meta.get('PatientID') or folder or "Unknown"
+                study_id = meta.get('StudyID')
+                name = " ".join(part for part in (meta.get('StudyDate'), f"Exam {study_id}" if study_id else "")
+                                if part) or folder or "Exam"
+                patient_node = self.directory_structure.setdefault(patient, {})
+                # Keep different exams with the same name apart
+                unique_name, n = name, 2
+                while unique_name in patient_node:
+                    unique_name, n = f"{name} ({n})", n + 1
+                exam_nodes[exam_key] = patient_node[unique_name] = {}
+            exam_nodes[exam_key][path] = path
+
     def _scan_series_headers(self, dicom_directories):
         """Read one header per series folder (no pixel data) so series can be labeled and grouped by exam"""
         for dir_info in dicom_directories:
@@ -437,7 +403,7 @@ class DicomSeriesModel(QObject):
         return len(self.current_series)
     
     def get_directory_structure(self):
-        """Return the directory structure"""
+        """Return the series tree: {patient: {exam: {series path: series path}}}"""
         return self.directory_structure
     
     def get_current_series_path(self):

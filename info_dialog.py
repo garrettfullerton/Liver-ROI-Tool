@@ -53,7 +53,8 @@ def build_help_html():
 
 <h3>Basic workflow</h3>
 <ol>
-<li><b>Open Folder</b> and pick a patient/exam folder. Series appear as <i>#SeriesNumber Description</i>,
+<li><b>Open Folder</b> and pick a patient/exam folder. Series are grouped by patient and exam (Study Instance UID),
+wherever they are stored, and appear as <i>#SeriesNumber Description</i>,
 with ROI progress (e.g. <i>5/9</i>, <i>✓ 9/9</i>); the current series is bold.</li>
 <li>Choose a <b>Segmentation Scheme</b>: 9-segment, 4-segment, left/right lobe, or a single whole-liver ROI.</li>
 <li>Select a segment (button or Ctrl+number) and draw the ROI. Drawing another ROI for the same segment
